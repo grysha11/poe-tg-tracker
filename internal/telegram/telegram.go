@@ -89,7 +89,9 @@ func (b *Bot) post(ctx context.Context, method string, payload any) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode != http.StatusOK {
@@ -115,7 +117,9 @@ func (b *Bot) GetUpdates(ctx context.Context, offset int64, timeoutSec int) ([]U
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	var out updatesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {

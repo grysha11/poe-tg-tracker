@@ -9,69 +9,13 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"sync"
-)
-
-const (
-	DivineID = "Metadata/Items/Currency/CurrencyModValues"
-	ChaosID  = "Metadata/Items/Currency/CurrencyRerollRare"
-	ExaltID  = "Metadata/Items/Currency/CurrencyAddModToRare" 
 )
 
 const apiBase = "https://web.poecdn.com/api/currency-exchange/poe2"
 
-type Digest struct {
-	NextChangeID	int64		`json:"next_change_id"`
-	Markets			[]Market	`json:"markets"`
-}
-
-type Market struct {
-	League       string            `json:"league"`
-	MarketID     string            `json:"market_id"`
-	MarketPair   []string          `json:"market_pair"`
-	VolumeTraded map[string]uint64 `json:"volume_traded"`
-	LowestRatio  map[string]uint64 `json:"lowest_ratio"`
-	HighestRatio map[string]uint64 `json:"highest_ratio"`
-}
-
-type Rate struct {
-	Quote      string  // base item id of the non-Divine side
-	VWAP       float64 // volume-weighted average: the number you should display
-	Low        float64 // cheapest observed, per Divine
-	High       float64 // dearest observed, per Divine
-	DivineVol  uint64
-	QuoteVol   uint64
-}
-
-type Snapshot struct {
-	League	string
-	HourUTC	time.Time
-	Chaos	Rate
-	Exalt	Rate
-}
-
-type Client struct {
-	HTTP		*http.Client
-	UserAgent	string
-}
-
-type Cache struct {
-	client *Client
-	league string
-	ttl    time.Duration
- 
-	mu      sync.Mutex
-	snap    *Snapshot
-	fetched time.Time
-}
-
-func (s *Snapshot) Thin(min uint64) bool {
-	return s.Chaos.DivineVol < min || s.Exalt.DivineVol < min
-}
-
 func NewClient(userAgent string) *Client {
 	return &Client{
-		HTTP: &http.Client{Timeout: 30 * time.Second},
+		HTTP:      &http.Client{Timeout: 30 * time.Second},
 		UserAgent: userAgent,
 	}
 }
@@ -89,7 +33,9 @@ func (c *Client) Fetch(ctx context.Context, ts int64) (*Digest, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
@@ -129,10 +75,10 @@ func rateFrom(m Market, base, quote string) (Rate, bool) {
 	}
 
 	r := Rate{
-		Quote: quote,
-		VWAP: float64(quoteVol) / float64(baseVol),
+		Quote:     quote,
+		VWAP:      float64(quoteVol) / float64(baseVol),
 		DivineVol: baseVol,
-		QuoteVol: quoteVol,
+		QuoteVol:  quoteVol,
 	}
 
 	var bounds []float64
@@ -164,7 +110,7 @@ func Leagues(d *Digest) []string {
 	for lg := range counts {
 		out = append(out, lg)
 	}
-	sort.Slice(out, func(i, j int) bool { return counts[out[i]] > counts[out[j]]})
+	sort.Slice(out, func(i, j int) bool { return counts[out[i]] > counts[out[j]] })
 	for i, lg := range out {
 		out[i] = fmt.Sprintf("%s (%d markets)", lg, counts[lg])
 	}
@@ -172,30 +118,30 @@ func Leagues(d *Digest) []string {
 }
 
 func snapshotFrom(d *Digest, league string, hour time.Time) (*Snapshot, bool) {
-	chaosM, ok := findMarket(d.Markets, league, DivineID, ChaosID)
+	chaosM, ok := findMarket(d.Markets, league, Divine.ID, Chaos.ID)
 	if !ok {
 		return nil, false
 	}
-	exaltM, ok := findMarket(d.Markets, league, DivineID, ExaltID)
+	exaltM, ok := findMarket(d.Markets, league, Divine.ID, Exalt.ID)
 	if !ok {
 		return nil, false
 	}
- 
-	chaos, ok := rateFrom(chaosM, DivineID, ChaosID)
+
+	chaos, ok := rateFrom(chaosM, Divine.ID, Chaos.ID)
 	if !ok {
 		return nil, false
 	}
-	exalt, ok := rateFrom(exaltM, DivineID, ExaltID)
+	exalt, ok := rateFrom(exaltM, Divine.ID, Exalt.ID)
 	if !ok {
 		return nil, false
 	}
- 
+
 	return &Snapshot{League: league, HourUTC: hour, Chaos: chaos, Exalt: exalt}, true
 }
 
 func (c *Client) LastHour(ctx context.Context, league string) (*Snapshot, error) {
 	newest := AlignHour(time.Now()).Add(-time.Hour)
- 
+
 	var firstErr error
 	for _, hour := range []time.Time{newest, newest.Add(-time.Hour)} {
 		d, err := c.Fetch(ctx, hour.Unix())
@@ -209,7 +155,7 @@ func (c *Client) LastHour(ctx context.Context, league string) (*Snapshot, error)
 			return snap, nil
 		}
 	}
- 
+
 	if firstErr != nil {
 		return nil, firstErr
 	}
@@ -223,11 +169,11 @@ func NewCache(c *Client, league string, ttl time.Duration) *Cache {
 func (c *Cache) Get(ctx context.Context) (*Snapshot, bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
- 
+
 	if c.snap != nil && time.Since(c.fetched) < c.ttl {
 		return c.snap, false, nil
 	}
- 
+
 	snap, err := c.client.LastHour(ctx, c.league)
 	if err != nil {
 		if c.snap != nil {
@@ -235,7 +181,7 @@ func (c *Cache) Get(ctx context.Context) (*Snapshot, bool, error) {
 		}
 		return nil, false, err
 	}
- 
+
 	c.snap = snap
 	c.fetched = time.Now()
 	return snap, true, nil

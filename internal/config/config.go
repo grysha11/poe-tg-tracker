@@ -12,6 +12,7 @@ type Config struct {
 	UserAgent		string
 	CacheTTL		time.Duration
 	MinDivineVolume	uint64
+	LogLevel		string
 }
 
 func takeEnv(key string) (string, error) {
@@ -36,11 +37,16 @@ func LoadConfig() (Config, error) {
 	}
 	user := fmt.Sprintf("poe-tg-tracker/0.1.0 (contact: %s)", contact)
 
+	logLevel, err := takeEnv("LOG_LEVEL"); if err != nil {
+		logLevel = "info"
+	}
+
 	return Config{
 		TelegramToken: token,
 		League: league,
 		UserAgent: user,
 		MinDivineVolume: 50,
 		CacheTTL: 10 * time.Minute,
+		LogLevel: logLevel,
 	}, nil
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -12,6 +12,7 @@ import (
 
 
 	"github.com/grysha11/poe-tg-tracker/internal/config"
+	"github.com/grysha11/poe-tg-tracker/internal/logger"
 	"github.com/grysha11/poe-tg-tracker/internal/telegram"
 	"github.com/grysha11/poe-tg-tracker/internal/exchange"
 )
@@ -21,31 +22,36 @@ type App struct {
 	client	*exchange.Client
 	cache	*exchange.Cache
 	cfg		config.Config
+	log		*slog.Logger
 }
 
 func main() {
 	cfg, err := config.LoadConfig(); if err != nil {
-		log.Printf("Error: %v", err)
-		log.Fatal("Config was not able to load")
+		fmt.Fprintf(os.Stderr, "config load failed: %v\n", err)
+		os.Exit(1)
 	}
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	log := logger.New(cfg.LogLevel)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
- 
+
 	client := exchange.NewClient(cfg.UserAgent)
 	app := &App{
 		bot:    telegram.NewBot(cfg.TelegramToken),
 		client: client,
 		cache:  exchange.NewCache(client, cfg.League, cfg.CacheTTL),
 		cfg:    cfg,
+		log:    log,
 	}
- 
-	log.Printf("starting; league=%q min_divine_vol=%d", cfg.League, cfg.MinDivineVolume)
+
+	log.Info("starting", "league", cfg.League, "min_divine_vol", cfg.MinDivineVolume)
  
 	var offset int64
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("shutting down")
+			log.Info("shutting down")
 			return
 		default:
 		}
@@ -55,7 +61,7 @@ func main() {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("getUpdates: %v", err)
+			log.Error("getUpdates failed", "err", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -97,7 +103,7 @@ func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
 	case "rates":
 		snap, _, err := a.cache.Get(ctx)
 		if err != nil {
-			log.Printf("rates: %v", err)
+			a.log.Error("rates fetch failed", "err", err)
 			a.send(ctx, msg.Chat.ID, "Couldn't get rates right now. Try again shortly.", telegram.RatesKeyboard())
 			return
 		}
@@ -106,7 +112,7 @@ func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
 	case "leagues":
 		d, err := a.client.Fetch(ctx, exchange.AlignHour(time.Now()).Add(-time.Hour).Unix())
 		if err != nil {
-			log.Printf("leagues: %v", err)
+			a.log.Error("leagues fetch failed", "err", err)
 			a.send(ctx, msg.Chat.ID, "Couldn't reach the exchange API.", nil)
 			return
 		}
@@ -130,7 +136,7 @@ func (a *App) handleCallback(ctx context.Context, cb *telegram.CallbackQuery) {
  
 	snap, fresh, err := a.cache.Get(ctx)
 	if err != nil {
-		log.Printf("callback rates: %v", err)
+		a.log.Error("callback rates fetch failed", "err", err)
 		_ = a.bot.AnswerCallbackQuery(ctx, cb.ID, "Couldn't reach the API")
 		return
 	}
@@ -140,18 +146,18 @@ func (a *App) handleCallback(ctx context.Context, cb *telegram.CallbackQuery) {
 		toast = "Updated"
 	}
 	if err := a.bot.AnswerCallbackQuery(ctx, cb.ID, toast); err != nil {
-		log.Printf("answerCallbackQuery: %v", err)
+		a.log.Error("answerCallbackQuery failed", "err", err)
 	}
- 
+
 	if err := a.bot.EditMessageText(ctx, cb.Message.Chat.ID, cb.Message.MessageID,
 		a.formatRates(snap), telegram.RatesKeyboard()); err != nil {
-		log.Printf("editMessageText: %v", err)
+		a.log.Error("editMessageText failed", "err", err)
 	}
 }
- 
+
 func (a *App) send(ctx context.Context, chatID int64, text string, markup *telegram.InlineKeyboardMarkup) {
 	if err := a.bot.SendMessage(ctx, chatID, text, markup); err != nil {
-		log.Printf("sendMessage: %v", err)
+		a.log.Error("sendMessage failed", "err", err)
 	}
 }
  

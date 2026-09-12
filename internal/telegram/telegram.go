@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-
 type Bot struct {
 	token string
 	http  *http.Client
@@ -21,7 +20,7 @@ type Bot struct {
 func NewBot(token string) *Bot {
 	return &Bot{
 		token: token,
-		http: &http.Client{Timeout: 65 * time.Second},
+		http:  &http.Client{Timeout: 65 * time.Second},
 	}
 }
 

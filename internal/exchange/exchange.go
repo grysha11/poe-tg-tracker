@@ -117,26 +117,23 @@ func Leagues(d *Digest) []string {
 	return out
 }
 
-func snapshotFrom(d *Digest, league string, hour time.Time) (*Snapshot, bool) {
-	chaosM, ok := findMarket(d.Markets, league, Divine.ID, Chaos.ID)
-	if !ok {
+func snapshotFrom(d *Digest, league, base string, quotes []Currency, hour time.Time) (*Snapshot, bool) {
+	rates := make(map[string]Rate, len(quotes))
+	for _, quote := range quotes {
+		m, ok := findMarket(d.Markets, league, base, quote.ID)
+		if !ok {
+			continue
+		}
+		r, ok := rateFrom(m, base, quote.ID)
+		if !ok {
+			continue
+		}
+		rates[quote.ID] = r
+	}
+	if len(rates) == 0 {
 		return nil, false
 	}
-	exaltM, ok := findMarket(d.Markets, league, Divine.ID, Exalt.ID)
-	if !ok {
-		return nil, false
-	}
-
-	chaos, ok := rateFrom(chaosM, Divine.ID, Chaos.ID)
-	if !ok {
-		return nil, false
-	}
-	exalt, ok := rateFrom(exaltM, Divine.ID, Exalt.ID)
-	if !ok {
-		return nil, false
-	}
-
-	return &Snapshot{League: league, HourUTC: hour, Chaos: chaos, Exalt: exalt}, true
+	return &Snapshot{League: league, HourUTC: hour, Base: base, Rates: rates}, true
 }
 
 func (c *Client) LastHour(ctx context.Context, league string) (*Snapshot, error) {
@@ -151,7 +148,7 @@ func (c *Client) LastHour(ctx context.Context, league string) (*Snapshot, error)
 			}
 			continue
 		}
-		if snap, ok := snapshotFrom(d, league, hour); ok {
+		if snap, ok := snapshotFrom(d, league, Divine.ID, Quotes, hour); ok {
 			return snap, nil
 		}
 	}

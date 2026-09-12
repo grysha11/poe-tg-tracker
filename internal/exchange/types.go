@@ -17,6 +17,8 @@ var (
 	Exalt  = Currency{ID: "Metadata/Items/Currency/CurrencyAddModToRare", Name: "Exalt"}
 )
 
+var Quotes = []Currency{Chaos, Exalt}
+
 type Digest struct {
 	NextChangeID int64    `json:"next_change_id"`
 	Markets      []Market `json:"markets"`
@@ -43,12 +45,17 @@ type Rate struct {
 type Snapshot struct {
 	League  string
 	HourUTC time.Time
-	Chaos   Rate
-	Exalt   Rate
+	Base    string // currency all rates are quoted against, e.g. Divine.ID
+	Rates   map[string]Rate
 }
 
 func (s *Snapshot) Thin(min uint64) bool {
-	return s.Chaos.DivineVol < min || s.Exalt.DivineVol < min
+	for _, r := range s.Rates {
+		if r.DivineVol < min {
+			return true
+		}
+	}
+	return false
 }
 
 type Client struct {

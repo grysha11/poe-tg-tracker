@@ -40,7 +40,7 @@ func main() {
 	app := &App{
 		bot:    telegram.NewBot(cfg.TelegramToken),
 		client: client,
-		cache:  exchange.NewCache(client, cfg.League, cfg.CacheTTL),
+		cache:  exchange.NewCache(client, cfg.League, exchange.Divine.ID, exchange.Quotes, cfg.CacheTTL),
 		cfg:    cfg,
 		log:    log,
 	}

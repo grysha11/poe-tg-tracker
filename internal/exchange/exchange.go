@@ -136,7 +136,7 @@ func snapshotFrom(d *Digest, league, base string, quotes []Currency, hour time.T
 	return &Snapshot{League: league, HourUTC: hour, Base: base, Rates: rates}, true
 }
 
-func (c *Client) LastHour(ctx context.Context, league string) (*Snapshot, error) {
+func (c *Client) LastHour(ctx context.Context, league, base string, quotes []Currency) (*Snapshot, error) {
 	newest := AlignHour(time.Now()).Add(-time.Hour)
 
 	var firstErr error
@@ -148,7 +148,7 @@ func (c *Client) LastHour(ctx context.Context, league string) (*Snapshot, error)
 			}
 			continue
 		}
-		if snap, ok := snapshotFrom(d, league, Divine.ID, Quotes, hour); ok {
+		if snap, ok := snapshotFrom(d, league, base, quotes, hour); ok {
 			return snap, nil
 		}
 	}
@@ -156,11 +156,11 @@ func (c *Client) LastHour(ctx context.Context, league string) (*Snapshot, error)
 	if firstErr != nil {
 		return nil, firstErr
 	}
-	return nil, fmt.Errorf("no Divine markets for league %q in the last settled hour", league)
+	return nil, fmt.Errorf("no markets for league %q in the last settled hour", league)
 }
 
-func NewCache(c *Client, league string, ttl time.Duration) *Cache {
-	return &Cache{client: c, league: league, ttl: ttl}
+func NewCache(c *Client, league, base string, quotes []Currency, ttl time.Duration) *Cache {
+	return &Cache{client: c, league: league, base: base, quotes: quotes, ttl: ttl}
 }
 
 func (c *Cache) Get(ctx context.Context) (*Snapshot, bool, error) {
@@ -171,7 +171,7 @@ func (c *Cache) Get(ctx context.Context) (*Snapshot, bool, error) {
 		return c.snap, false, nil
 	}
 
-	snap, err := c.client.LastHour(ctx, c.league)
+	snap, err := c.client.LastHour(ctx, c.league, c.base, c.quotes)
 	if err != nil {
 		if c.snap != nil {
 			return c.snap, false, nil

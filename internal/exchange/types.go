@@ -66,6 +66,8 @@ type Client struct {
 type Cache struct {
 	client *Client
 	league string
+	base   string
+	quotes []Currency
 	ttl    time.Duration
 
 	mu      sync.Mutex

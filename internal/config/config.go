@@ -3,8 +3,31 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
+
+func loadDotEnv() {
+	data, err := os.ReadFile(".env")
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		if _, exists := os.LookupEnv(key); !exists {
+			os.Setenv(key, value)
+		}
+	}
+}
 
 type Config struct {
 	TelegramToken   string
@@ -24,6 +47,8 @@ func takeEnv(key string) (string, error) {
 }
 
 func LoadConfig() (Config, error) {
+	loadDotEnv()
+
 	token, err := takeEnv("TELGRAM_BOT_TOKEN")
 	if err != nil {
 		return Config{}, err

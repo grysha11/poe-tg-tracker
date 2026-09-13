@@ -7,14 +7,15 @@ import (
 )
 
 type Currency struct {
-	ID   string
-	Name string
+	ID      string
+	Name    string
+	TradeID string // key into internal/emoji's ids.json
 }
 
 var (
-	Divine = Currency{ID: "Metadata/Items/Currency/CurrencyModValues", Name: "Divine"}
-	Chaos  = Currency{ID: "Metadata/Items/Currency/CurrencyRerollRare", Name: "Chaos"}
-	Exalt  = Currency{ID: "Metadata/Items/Currency/CurrencyAddModToRare", Name: "Exalt"}
+	Divine = Currency{ID: "Metadata/Items/Currency/CurrencyModValues", Name: "Divine", TradeID: "divine"}
+	Chaos  = Currency{ID: "Metadata/Items/Currency/CurrencyRerollRare", Name: "Chaos", TradeID: "chaos"}
+	Exalt  = Currency{ID: "Metadata/Items/Currency/CurrencyAddModToRare", Name: "Exalt", TradeID: "exalted"}
 )
 
 var Quotes = []Currency{Chaos, Exalt}

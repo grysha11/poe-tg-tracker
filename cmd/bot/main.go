@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/grysha11/poe-tg-tracker/internal/config"
+	"github.com/grysha11/poe-tg-tracker/internal/emoji"
 	"github.com/grysha11/poe-tg-tracker/internal/exchange"
 	"github.com/grysha11/poe-tg-tracker/internal/logger"
 	"github.com/grysha11/poe-tg-tracker/internal/telegram"
@@ -164,13 +165,13 @@ func (a *App) send(ctx context.Context, chatID int64, text string, markup *teleg
 func (a *App) formatRates(s *exchange.Snapshot) string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "<b>%s</b>\n\n", s.League)
+	fmt.Fprintf(&b, "%s <b>%s</b>\n\n", emoji.Tag(exchange.Divine.TradeID), s.League)
 	for _, q := range exchange.Quotes {
 		r, ok := s.Rates[q.ID]
 		if !ok {
 			continue
 		}
-		fmt.Fprintf(&b, "1 Divine = <b>%.2f</b> %s\n", r.VWAP, q.Name)
+		fmt.Fprintf(&b, "%s 1 Divine = <b>%.2f</b> %s\n", emoji.Tag(q.TradeID), r.VWAP, q.Name)
 		fmt.Fprintf(&b, "<i>range %.1f–%.1f · %d div traded</i>\n\n", r.Low, r.High, r.DivineVol)
 	}
 

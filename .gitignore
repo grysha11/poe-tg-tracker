@@ -1,2 +1,6 @@
 .env
 main
+/pictures/
+/emoji/
+/test/
+.state_*.json

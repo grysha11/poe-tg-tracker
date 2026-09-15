@@ -1,0 +1,13 @@
+services:
+  bot:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DB_PATH: /data/poetracker.db
+    volumes:
+      - poetracker-data:/data
+    restart: unless-stopped
+
+volumes:
+  poetracker-data:

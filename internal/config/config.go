@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func loadDotEnv() {
+func LoadDotEnv() {
 	data, err := os.ReadFile(".env")
 	if err != nil {
 		return
@@ -48,7 +48,7 @@ func takeEnv(key string) (string, error) {
 }
 
 func LoadConfig() (Config, error) {
-	loadDotEnv()
+	LoadDotEnv()
 
 	token, err := takeEnv("TELGRAM_BOT_TOKEN")
 	if err != nil {

@@ -1,6 +1,7 @@
 services:
   bot:
     build: .
+    image: poe-tg-tracker:latest
     env_file:
       - .env
     environment:
@@ -8,6 +9,21 @@ services:
     volumes:
       - poetracker-data:/data
     restart: unless-stopped
+
+  fetch-cron:
+    image: mcuadros/ofelia:latest
+    depends_on:
+      - bot
+    command: daemon --docker
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      ofelia.job-run.fetch-hourly.schedule: "0 1 * * * *"
+      ofelia.job-run.fetch-hourly.image: "poe-tg-tracker:latest"
+      ofelia.job-run.fetch-hourly.command: "./fetcher"
+      ofelia.job-run.fetch-hourly.volume: "poetracker-data:/data"
+      ofelia.job-run.fetch-hourly.environment: "POE_CONTACT=${POE_CONTACT},FETCH_OUT_PATH=/data/last_fetch.json,LOG_LEVEL=info"
 
 volumes:
   poetracker-data:

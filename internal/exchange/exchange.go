@@ -20,7 +20,7 @@ func NewClient(userAgent string) *Client {
 	}
 }
 
-func (c *Client) Fetch(ctx context.Context, ts int64) (*Digest, error) {
+func (c *Client) FetchRaw(ctx context.Context, ts int64) ([]byte, error) {
 	url := fmt.Sprintf("%s/%d", apiBase, ts)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -39,12 +39,21 @@ func (c *Client) Fetch(ctx context.Context, ts int64) (*Digest, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return &Digest{}, fmt.Errorf("exchange %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+		return nil, fmt.Errorf("exchange %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
+func (c *Client) Fetch(ctx context.Context, ts int64) (*Digest, error) {
+	raw, err := c.FetchRaw(ctx, ts)
+	if err != nil {
+		return nil, err
 	}
 
 	var d Digest
-	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
-		return nil, fmt.Errorf("decode digest: %d", err)
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return nil, fmt.Errorf("decode digest: %w", err)
 	}
 
 	return &d, nil

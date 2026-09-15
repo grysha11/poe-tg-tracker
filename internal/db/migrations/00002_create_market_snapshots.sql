@@ -12,10 +12,10 @@ CREATE TABLE market_snapshots (
     lowest_ratio_b  INTEGER NOT NULL,
     highest_ratio_a INTEGER NOT NULL,
     highest_ratio_b INTEGER NOT NULL,
-    fetched_at      INTEGER NOT NULL
+    fetched_at      INTEGER NOT NULL,
+    UNIQUE (hour_utc, league, item_a_id, item_b_id)
 );
 
-CREATE UNIQUE INDEX idx_market_snapshots_hour_market ON market_snapshots (hour_utc, market_id);
 CREATE INDEX idx_market_snapshots_hour_items ON market_snapshots (hour_utc, item_a_id, item_b_id);
 
 -- +goose Down

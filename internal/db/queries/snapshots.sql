@@ -4,7 +4,7 @@ INSERT INTO market_snapshots (
     volume_a, volume_b, lowest_ratio_a, lowest_ratio_b, highest_ratio_a, highest_ratio_b,
     fetched_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (hour_utc, market_id) DO UPDATE SET
+ON CONFLICT (hour_utc, league, item_a_id, item_b_id) DO UPDATE SET
     volume_a        = excluded.volume_a,
     volume_b        = excluded.volume_b,
     lowest_ratio_a  = excluded.lowest_ratio_a,

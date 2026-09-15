@@ -13,7 +13,7 @@ import (
 	"github.com/grysha11/poe-tg-tracker/internal/logger"
 )
 
-var backoff = []time.Duration{0, 2 * time.Second, 5 * time.Second}
+var backoff = []time.Duration{0, 10 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second}
 
 func main() {
 	hourFlag := flag.Int64("hour", 0, "unix timestamp of hour to fetch (default: last settled hour)")

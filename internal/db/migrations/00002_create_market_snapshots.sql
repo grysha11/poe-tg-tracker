@@ -12,7 +12,7 @@ CREATE TABLE market_snapshots (
     lowest_ratio_b  INTEGER NOT NULL,
     highest_ratio_a INTEGER NOT NULL,
     highest_ratio_b INTEGER NOT NULL,
-    fetched_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    fetched_at      INTEGER NOT NULL
 );
 
 CREATE UNIQUE INDEX idx_market_snapshots_hour_market ON market_snapshots (hour_utc, market_id);

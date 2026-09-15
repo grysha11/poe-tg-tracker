@@ -14,8 +14,8 @@ type Currency struct {
 	Name          string         `json:"name"`
 	EmojiID       sql.NullString `json:"emoji_id"`
 	IsPlaceholder bool           `json:"is_placeholder"`
-	DiscoveredAt  string         `json:"discovered_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	DiscoveredAt  int64          `json:"discovered_at"`
+	UpdatedAt     int64          `json:"updated_at"`
 }
 
 type DefaultRatePair struct {
@@ -37,5 +37,5 @@ type MarketSnapshot struct {
 	LowestRatioB  int64  `json:"lowest_ratio_b"`
 	HighestRatioA int64  `json:"highest_ratio_a"`
 	HighestRatioB int64  `json:"highest_ratio_b"`
-	FetchedAt     string `json:"fetched_at"`
+	FetchedAt     int64  `json:"fetched_at"`
 }

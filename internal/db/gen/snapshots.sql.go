@@ -12,15 +12,17 @@ import (
 const insertMarketSnapshot = `-- name: InsertMarketSnapshot :exec
 INSERT INTO market_snapshots (
     hour_utc, league, market_id, item_a_path, item_b_path,
-    volume_a, volume_b, lowest_ratio_a, lowest_ratio_b, highest_ratio_a, highest_ratio_b
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    volume_a, volume_b, lowest_ratio_a, lowest_ratio_b, highest_ratio_a, highest_ratio_b,
+    fetched_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (hour_utc, market_id) DO UPDATE SET
     volume_a        = excluded.volume_a,
     volume_b        = excluded.volume_b,
     lowest_ratio_a  = excluded.lowest_ratio_a,
     lowest_ratio_b  = excluded.lowest_ratio_b,
     highest_ratio_a = excluded.highest_ratio_a,
-    highest_ratio_b = excluded.highest_ratio_b
+    highest_ratio_b = excluded.highest_ratio_b,
+    fetched_at      = excluded.fetched_at
 `
 
 type InsertMarketSnapshotParams struct {
@@ -35,6 +37,7 @@ type InsertMarketSnapshotParams struct {
 	LowestRatioB  int64  `json:"lowest_ratio_b"`
 	HighestRatioA int64  `json:"highest_ratio_a"`
 	HighestRatioB int64  `json:"highest_ratio_b"`
+	FetchedAt     int64  `json:"fetched_at"`
 }
 
 func (q *Queries) InsertMarketSnapshot(ctx context.Context, arg InsertMarketSnapshotParams) error {
@@ -50,6 +53,7 @@ func (q *Queries) InsertMarketSnapshot(ctx context.Context, arg InsertMarketSnap
 		arg.LowestRatioB,
 		arg.HighestRatioA,
 		arg.HighestRatioB,
+		arg.FetchedAt,
 	)
 	return err
 }

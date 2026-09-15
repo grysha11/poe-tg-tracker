@@ -1,11 +1,11 @@
 -- name: UpsertCurrencyPlaceholder :exec
-INSERT INTO currencies (item_path, trade_id, name, emoji_id, is_placeholder)
-VALUES (?, ?, ?, NULL, 1)
+INSERT INTO currencies (item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at)
+VALUES (?, ?, ?, NULL, 1, ?, ?)
 ON CONFLICT (item_path) DO NOTHING;
 
 -- name: UpsertCurrencyCurated :exec
-INSERT INTO currencies (item_path, trade_id, name, emoji_id, is_placeholder, updated_at)
-VALUES (?, ?, ?, ?, 0, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+INSERT INTO currencies (item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at)
+VALUES (?, ?, ?, ?, 0, ?, ?)
 ON CONFLICT (item_path) DO UPDATE SET
     trade_id       = excluded.trade_id,
     name           = excluded.name,

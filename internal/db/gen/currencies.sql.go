@@ -11,13 +11,14 @@ import (
 )
 
 const getCurrencyByPath = `-- name: GetCurrencyByPath :one
-SELECT item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies WHERE item_path = ?
+SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies WHERE item_path = ?
 `
 
 func (q *Queries) GetCurrencyByPath(ctx context.Context, itemPath string) (Currency, error) {
 	row := q.db.QueryRowContext(ctx, getCurrencyByPath, itemPath)
 	var i Currency
 	err := row.Scan(
+		&i.CurrencyID,
 		&i.ItemPath,
 		&i.TradeID,
 		&i.Name,
@@ -30,7 +31,7 @@ func (q *Queries) GetCurrencyByPath(ctx context.Context, itemPath string) (Curre
 }
 
 const listCurrencies = `-- name: ListCurrencies :many
-SELECT item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies ORDER BY name
+SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies ORDER BY name
 `
 
 func (q *Queries) ListCurrencies(ctx context.Context) ([]Currency, error) {
@@ -43,6 +44,7 @@ func (q *Queries) ListCurrencies(ctx context.Context) ([]Currency, error) {
 	for rows.Next() {
 		var i Currency
 		if err := rows.Scan(
+			&i.CurrencyID,
 			&i.ItemPath,
 			&i.TradeID,
 			&i.Name,
@@ -65,7 +67,7 @@ func (q *Queries) ListCurrencies(ctx context.Context) ([]Currency, error) {
 }
 
 const listPlaceholderCurrencies = `-- name: ListPlaceholderCurrencies :many
-SELECT item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies WHERE is_placeholder = 1 ORDER BY discovered_at DESC
+SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies WHERE is_placeholder = 1 ORDER BY discovered_at DESC
 `
 
 func (q *Queries) ListPlaceholderCurrencies(ctx context.Context) ([]Currency, error) {
@@ -78,6 +80,7 @@ func (q *Queries) ListPlaceholderCurrencies(ctx context.Context) ([]Currency, er
 	for rows.Next() {
 		var i Currency
 		if err := rows.Scan(
+			&i.CurrencyID,
 			&i.ItemPath,
 			&i.TradeID,
 			&i.Name,

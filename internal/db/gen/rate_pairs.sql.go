@@ -19,8 +19,8 @@ SELECT
     quote.name      AS quote_name,
     quote.trade_id  AS quote_trade_id
 FROM default_rate_pairs rp
-JOIN currencies base ON base.item_path = rp.base_item_path
-JOIN currencies quote ON quote.item_path = rp.quote_item_path
+JOIN currencies base ON base.currency_id = rp.base_currency_id
+JOIN currencies quote ON quote.currency_id = rp.quote_currency_id
 ORDER BY rp.sort_order
 `
 

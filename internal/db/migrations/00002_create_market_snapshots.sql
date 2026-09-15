@@ -4,8 +4,8 @@ CREATE TABLE market_snapshots (
     hour_utc        INTEGER NOT NULL,
     league          TEXT NOT NULL,
     market_id       TEXT NOT NULL,
-    item_a_path     TEXT NOT NULL REFERENCES currencies (item_path),
-    item_b_path     TEXT NOT NULL REFERENCES currencies (item_path),
+    item_a_id       INTEGER NOT NULL REFERENCES currencies (currency_id),
+    item_b_id       INTEGER NOT NULL REFERENCES currencies (currency_id),
     volume_a        INTEGER NOT NULL,
     volume_b        INTEGER NOT NULL,
     lowest_ratio_a  INTEGER NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE market_snapshots (
 );
 
 CREATE UNIQUE INDEX idx_market_snapshots_hour_market ON market_snapshots (hour_utc, market_id);
-CREATE INDEX idx_market_snapshots_hour_items ON market_snapshots (hour_utc, item_a_path, item_b_path);
+CREATE INDEX idx_market_snapshots_hour_items ON market_snapshots (hour_utc, item_a_id, item_b_id);
 
 -- +goose Down
 DROP TABLE market_snapshots;

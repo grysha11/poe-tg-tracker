@@ -11,7 +11,7 @@ import (
 
 const insertMarketSnapshot = `-- name: InsertMarketSnapshot :exec
 INSERT INTO market_snapshots (
-    hour_utc, league, market_id, item_a_path, item_b_path,
+    hour_utc, league, market_id, item_a_id, item_b_id,
     volume_a, volume_b, lowest_ratio_a, lowest_ratio_b, highest_ratio_a, highest_ratio_b,
     fetched_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -29,8 +29,8 @@ type InsertMarketSnapshotParams struct {
 	HourUtc       int64  `json:"hour_utc"`
 	League        string `json:"league"`
 	MarketID      string `json:"market_id"`
-	ItemAPath     string `json:"item_a_path"`
-	ItemBPath     string `json:"item_b_path"`
+	ItemAID       int64  `json:"item_a_id"`
+	ItemBID       int64  `json:"item_b_id"`
 	VolumeA       int64  `json:"volume_a"`
 	VolumeB       int64  `json:"volume_b"`
 	LowestRatioA  int64  `json:"lowest_ratio_a"`
@@ -45,8 +45,8 @@ func (q *Queries) InsertMarketSnapshot(ctx context.Context, arg InsertMarketSnap
 		arg.HourUtc,
 		arg.League,
 		arg.MarketID,
-		arg.ItemAPath,
-		arg.ItemBPath,
+		arg.ItemAID,
+		arg.ItemBID,
 		arg.VolumeA,
 		arg.VolumeB,
 		arg.LowestRatioA,
@@ -70,7 +70,7 @@ func (q *Queries) LatestSnapshotHour(ctx context.Context, league string) (interf
 }
 
 const listSnapshotsForHour = `-- name: ListSnapshotsForHour :many
-SELECT id, hour_utc, league, market_id, item_a_path, item_b_path, volume_a, volume_b, lowest_ratio_a, lowest_ratio_b, highest_ratio_a, highest_ratio_b, fetched_at FROM market_snapshots WHERE hour_utc = ? AND league = ?
+SELECT id, hour_utc, league, market_id, item_a_id, item_b_id, volume_a, volume_b, lowest_ratio_a, lowest_ratio_b, highest_ratio_a, highest_ratio_b, fetched_at FROM market_snapshots WHERE hour_utc = ? AND league = ?
 `
 
 type ListSnapshotsForHourParams struct {
@@ -92,8 +92,8 @@ func (q *Queries) ListSnapshotsForHour(ctx context.Context, arg ListSnapshotsFor
 			&i.HourUtc,
 			&i.League,
 			&i.MarketID,
-			&i.ItemAPath,
-			&i.ItemBPath,
+			&i.ItemAID,
+			&i.ItemBID,
 			&i.VolumeA,
 			&i.VolumeB,
 			&i.LowestRatioA,

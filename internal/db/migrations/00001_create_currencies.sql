@@ -1,6 +1,7 @@
 -- +goose Up
 CREATE TABLE currencies (
-    item_path      TEXT PRIMARY KEY,
+    currency_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_path      TEXT NOT NULL UNIQUE,
     trade_id       TEXT NOT NULL,
     name           TEXT NOT NULL,
     emoji_id       TEXT,

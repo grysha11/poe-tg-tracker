@@ -9,6 +9,7 @@ import (
 )
 
 type Currency struct {
+	CurrencyID    int64          `json:"currency_id"`
 	ItemPath      string         `json:"item_path"`
 	TradeID       string         `json:"trade_id"`
 	Name          string         `json:"name"`
@@ -19,9 +20,9 @@ type Currency struct {
 }
 
 type DefaultRatePair struct {
-	BaseItemPath  string `json:"base_item_path"`
-	QuoteItemPath string `json:"quote_item_path"`
-	SortOrder     int64  `json:"sort_order"`
+	BaseCurrencyID  int64 `json:"base_currency_id"`
+	QuoteCurrencyID int64 `json:"quote_currency_id"`
+	SortOrder       int64 `json:"sort_order"`
 }
 
 type MarketSnapshot struct {
@@ -29,8 +30,8 @@ type MarketSnapshot struct {
 	HourUtc       int64  `json:"hour_utc"`
 	League        string `json:"league"`
 	MarketID      string `json:"market_id"`
-	ItemAPath     string `json:"item_a_path"`
-	ItemBPath     string `json:"item_b_path"`
+	ItemAID       int64  `json:"item_a_id"`
+	ItemBID       int64  `json:"item_b_id"`
 	VolumeA       int64  `json:"volume_a"`
 	VolumeB       int64  `json:"volume_b"`
 	LowestRatioA  int64  `json:"lowest_ratio_a"`

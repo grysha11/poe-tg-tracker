@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/grysha11/poe-tg-tracker/internal/config"
+	"github.com/grysha11/poe-tg-tracker/internal/db"
+	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
 	"github.com/grysha11/poe-tg-tracker/internal/emoji"
 	"github.com/grysha11/poe-tg-tracker/internal/exchange"
 	"github.com/grysha11/poe-tg-tracker/internal/logger"
@@ -36,6 +39,23 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	dbase, err := db.Open(cfg.DBPath)
+	if err != nil {
+		log.Error("db open failed", "err", err)
+		os.Exit(1)
+	}
+	defer dbase.Close()
+
+	if err := dbase.Migrate(); err != nil {
+		log.Error("db migrate failed", "err", err)
+		os.Exit(1)
+	}
+
+	// if err := seedKnownCurrencies(ctx, dbase.Q); err != nil {
+	// 	log.Error("db seed failed", "err", err)
+	// 	os.Exit(1)
+	// }
 
 	client := exchange.NewClient(cfg.UserAgent)
 	app := &App{

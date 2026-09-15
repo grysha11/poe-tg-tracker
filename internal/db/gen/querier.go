@@ -13,6 +13,7 @@ type Querier interface {
 	InsertMarketSnapshot(ctx context.Context, arg InsertMarketSnapshotParams) error
 	LatestSnapshotHour(ctx context.Context, league string) (interface{}, error)
 	ListCurrencies(ctx context.Context) ([]Currency, error)
+	ListDefaultRatePairs(ctx context.Context) ([]ListDefaultRatePairsRow, error)
 	ListPlaceholderCurrencies(ctx context.Context) ([]Currency, error)
 	ListSnapshotsForHour(ctx context.Context, arg ListSnapshotsForHourParams) ([]MarketSnapshot, error)
 	UpsertCurrencyCurated(ctx context.Context, arg UpsertCurrencyCuratedParams) error

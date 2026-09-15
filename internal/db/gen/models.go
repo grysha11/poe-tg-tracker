@@ -18,6 +18,12 @@ type Currency struct {
 	UpdatedAt     string         `json:"updated_at"`
 }
 
+type DefaultRatePair struct {
+	BaseItemPath  string `json:"base_item_path"`
+	QuoteItemPath string `json:"quote_item_path"`
+	SortOrder     int64  `json:"sort_order"`
+}
+
 type MarketSnapshot struct {
 	ID            int64  `json:"id"`
 	HourUtc       int64  `json:"hour_utc"`

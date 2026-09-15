@@ -4,3 +4,6 @@ main
 /emoji/
 /test/
 .state_*.json
+*.db
+*.db-wal
+*.db-shm

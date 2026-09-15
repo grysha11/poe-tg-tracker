@@ -36,6 +36,7 @@ type Config struct {
 	CacheTTL        time.Duration
 	MinDivineVolume uint64
 	LogLevel        string
+	DBPath          string
 }
 
 func takeEnv(key string) (string, error) {
@@ -70,6 +71,11 @@ func LoadConfig() (Config, error) {
 		logLevel = "info"
 	}
 
+	dbPath, err := takeEnv("DB_PATH")
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		TelegramToken:   token,
 		League:          league,
@@ -77,5 +83,6 @@ func LoadConfig() (Config, error) {
 		MinDivineVolume: 50,
 		CacheTTL:        10 * time.Minute,
 		LogLevel:        logLevel,
+		DBPath:          dbPath,
 	}, nil
 }

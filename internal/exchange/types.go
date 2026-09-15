@@ -12,14 +12,6 @@ type Currency struct {
 	TradeID string // key into internal/emoji's ids.json
 }
 
-var (
-	Divine = Currency{ID: "Metadata/Items/Currency/CurrencyModValues", Name: "Divine", TradeID: "divine"}
-	Chaos  = Currency{ID: "Metadata/Items/Currency/CurrencyRerollRare", Name: "Chaos", TradeID: "chaos"}
-	Exalt  = Currency{ID: "Metadata/Items/Currency/CurrencyAddModToRare", Name: "Exalt", TradeID: "exalted"}
-)
-
-var Quotes = []Currency{Chaos, Exalt}
-
 type Digest struct {
 	NextChangeID int64    `json:"next_change_id"`
 	Markets      []Market `json:"markets"`

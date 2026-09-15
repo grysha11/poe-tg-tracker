@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/grysha11/poe-tg-tracker/internal/config"
+	"github.com/grysha11/poe-tg-tracker/internal/db"
+	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
 	"github.com/grysha11/poe-tg-tracker/internal/emoji"
 	"github.com/grysha11/poe-tg-tracker/internal/exchange"
 	"github.com/grysha11/poe-tg-tracker/internal/logger"
@@ -21,6 +23,8 @@ type App struct {
 	bot    *telegram.Bot
 	client *exchange.Client
 	cache  *exchange.Cache
+	base   exchange.Currency
+	quotes []exchange.Currency
 	cfg    config.Config
 	log    *slog.Logger
 }
@@ -37,11 +41,31 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	dbase, err := db.Open(cfg.DBPath)
+	if err != nil {
+		log.Error("db open failed", "err", err)
+		os.Exit(1)
+	}
+	defer dbase.Close()
+
+	if err := dbase.Migrate(); err != nil {
+		log.Error("db migrate failed", "err", err)
+		os.Exit(1)
+	}
+
+	base, quotes, err := loadDefaultRates(ctx, dbase.Q)
+	if err != nil {
+		log.Error("load default rate pairs failed", "err", err)
+		os.Exit(1)
+	}
+
 	client := exchange.NewClient(cfg.UserAgent)
 	app := &App{
 		bot:    telegram.NewBot(cfg.TelegramToken),
 		client: client,
-		cache:  exchange.NewCache(client, cfg.League, exchange.Divine.ID, exchange.Quotes, cfg.CacheTTL),
+		cache:  exchange.NewCache(client, cfg.League, base.ID, quotes, cfg.CacheTTL),
+		base:   base,
+		quotes: quotes,
 		cfg:    cfg,
 		log:    log,
 	}
@@ -78,6 +102,23 @@ func main() {
 			}
 		}
 	}
+}
+
+func loadDefaultRates(ctx context.Context, q *dbgen.Queries) (exchange.Currency, []exchange.Currency, error) {
+	rows, err := q.ListDefaultRatePairs(ctx)
+	if err != nil {
+		return exchange.Currency{}, nil, err
+	}
+	if len(rows) == 0 {
+		return exchange.Currency{}, nil, fmt.Errorf("no default rate pairs configured")
+	}
+
+	base := exchange.Currency{ID: rows[0].BaseItemPath, Name: rows[0].BaseName, TradeID: rows[0].BaseTradeID}
+	quotes := make([]exchange.Currency, 0, len(rows))
+	for _, r := range rows {
+		quotes = append(quotes, exchange.Currency{ID: r.QuoteItemPath, Name: r.QuoteName, TradeID: r.QuoteTradeID})
+	}
+	return base, quotes, nil
 }
 
 func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
@@ -165,14 +206,14 @@ func (a *App) send(ctx context.Context, chatID int64, text string, markup *teleg
 func (a *App) formatRates(s *exchange.Snapshot) string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "%s <b>%s</b>\n\n", emoji.Tag(exchange.Divine.TradeID), s.League)
-	for _, q := range exchange.Quotes {
+	fmt.Fprintf(&b, "%s <b>%s</b>\n\n", emoji.Tag(a.base.TradeID), s.League)
+	for _, q := range a.quotes {
 		r, ok := s.Rates[q.ID]
 		if !ok {
 			continue
 		}
-		fmt.Fprintf(&b, "%s 1 Divine = <b>%.2f</b> %s\n", emoji.Tag(q.TradeID), r.VWAP, q.Name)
-		fmt.Fprintf(&b, "<i>range %.1f–%.1f · %d div traded</i>\n\n", r.Low, r.High, r.DivineVol)
+		fmt.Fprintf(&b, "%s 1 %s = <b>%.2f</b> %s\n", emoji.Tag(q.TradeID), a.base.Name, r.VWAP, q.Name)
+		fmt.Fprintf(&b, "<i>range %.1f–%.1f · %d %s traded</i>\n\n", r.Low, r.High, r.DivineVol, a.base.Name)
 	}
 
 	if s.Thin(a.cfg.MinDivineVolume) {

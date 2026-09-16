@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -9,7 +11,9 @@ import (
 	"time"
 
 	"github.com/grysha11/poe-tg-tracker/internal/config"
+	"github.com/grysha11/poe-tg-tracker/internal/db"
 	"github.com/grysha11/poe-tg-tracker/internal/exchange"
+	"github.com/grysha11/poe-tg-tracker/internal/ingest"
 	"github.com/grysha11/poe-tg-tracker/internal/logger"
 )
 
@@ -35,6 +39,12 @@ func main() {
 	}
 	log := logger.New(logLevel)
 
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		fmt.Fprintln(os.Stderr, "fetcher: DB_PATH env required")
+		os.Exit(1)
+	}
+
 	hour := exchange.AlignHour(time.Now()).Add(-time.Hour)
 	if *hourFlag != 0 {
 		hour = exchange.AlignHour(time.Unix(*hourFlag, 0))
@@ -53,6 +63,8 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	prev, _ := os.ReadFile(outPath)
+
 	var (
 		raw []byte
 		err error
@@ -62,13 +74,39 @@ func main() {
 			time.Sleep(wait)
 		}
 		raw, err = client.FetchRaw(ctx, hour.Unix())
-		if err == nil {
-			break
+		if err != nil {
+			log.Warn("fetch attempt failed", "attempt", attempt+1, "err", err)
+			continue
 		}
-		log.Warn("fetch attempt failed", "attempt", attempt+1, "err", err)
+		if len(prev) > 0 && bytes.Equal(prev, raw) {
+			err = fmt.Errorf("unchanged data since last fetch")
+			log.Warn("fetch attempt returned unchanged data, retrying", "attempt", attempt+1)
+			continue
+		}
+		break
 	}
 	if err != nil {
 		log.Error("fetch failed, giving up", "hour", hour.Format(time.RFC3339), "err", err)
+		os.Exit(1)
+	}
+
+	var digest exchange.Digest
+	if err := json.Unmarshal(raw, &digest); err != nil {
+		log.Error("decode digest failed", "err", err)
+		os.Exit(1)
+	}
+
+	dbase, err := db.Open(dbPath)
+	if err != nil {
+		log.Error("db open failed", "err", err)
+		os.Exit(1)
+	}
+	defer dbase.Close()
+
+	fetchedAt := time.Now()
+	stats, err := ingest.Run(ctx, dbase, log, &digest, hour, fetchedAt)
+	if err != nil {
+		log.Error("ingest failed", "hour", hour.Format(time.RFC3339), "err", err)
 		os.Exit(1)
 	}
 
@@ -87,5 +125,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Info("fetch complete", "hour", hour.Format(time.RFC3339), "bytes", len(raw), "out", outPath)
+	log.Info("fetch complete",
+		"hour", hour.Format(time.RFC3339),
+		"bytes", len(raw),
+		"out", outPath,
+		"markets_seen", stats.MarketsSeen,
+		"markets_inserted", stats.MarketsInserted,
+		"markets_skipped", stats.MarketsSkipped,
+		"new_currencies", len(stats.NewCurrencies),
+	)
 }

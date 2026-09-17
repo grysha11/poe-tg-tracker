@@ -24,4 +24,4 @@ COPY --from=builder /out/curate ./curate
 USER bot
 VOLUME /data
 
-ENTRYPOINT ["./bot"]
+CMD ["./bot"]

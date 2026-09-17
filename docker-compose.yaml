@@ -22,9 +22,10 @@ services:
       ofelia.job-run.fetch-hourly.schedule: "0 1 * * * *"
       ofelia.job-run.fetch-hourly.image: "poe-tg-tracker:latest"
       ofelia.job-run.fetch-hourly.pull: "false"
-      ofelia.job-run.fetch-hourly.command: "./fetcher"
+      ofelia.job-run.fetch-hourly.command: "./fetcher -out /data/last_fetch.json"
       ofelia.job-run.fetch-hourly.volume: "poetracker-data:/data"
-      ofelia.job-run.fetch-hourly.environment: "POE_CONTACT=${POE_CONTACT},FETCH_OUT_PATH=/data/last_fetch.json,DB_PATH=/data/poetracker.db,LOG_LEVEL=info"
+      ofelia.job-run.fetch-hourly.environment: '["POE_CONTACT=${POE_CONTACT}","FETCH_OUT_PATH=/data/last_fetch.json","DB_PATH=/data/poetracker.db","LOG_LEVEL=info"]'
 
 volumes:
   poetracker-data:
+    name: poetracker-data

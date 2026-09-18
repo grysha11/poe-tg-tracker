@@ -61,10 +61,17 @@ type InlineKeyboardMarkup struct {
 	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
 }
 
-func RatesKeyboard() *InlineKeyboardMarkup {
+func RatesKeyboard(active string) *InlineKeyboardMarkup {
+	volume, price := "📊 Top volume", "💰 Most expensive"
+	if active == "volume" {
+		volume = "• " + volume
+	} else {
+		price = "• " + price
+	}
 	return &InlineKeyboardMarkup{
 		InlineKeyboard: [][]InlineKeyboardButton{{
-			{Text: "🔄 Last hour", CallbackData: "rates"},
+			{Text: volume, CallbackData: "rates:volume"},
+			{Text: price, CallbackData: "rates:price"},
 		}},
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 )
 
 func LoadDotEnv() {
@@ -30,13 +29,11 @@ func LoadDotEnv() {
 }
 
 type Config struct {
-	TelegramToken   string
-	League          string
-	UserAgent       string
-	CacheTTL        time.Duration
-	MinDivineVolume uint64
-	LogLevel        string
-	DBPath          string
+	TelegramToken string
+	League        string
+	UserAgent     string
+	LogLevel      string
+	DBPath        string
 }
 
 func takeEnv(key string) (string, error) {
@@ -77,12 +74,10 @@ func LoadConfig() (Config, error) {
 	}
 
 	return Config{
-		TelegramToken:   token,
-		League:          league,
-		UserAgent:       user,
-		MinDivineVolume: 50,
-		CacheTTL:        10 * time.Minute,
-		LogLevel:        logLevel,
-		DBPath:          dbPath,
+		TelegramToken: token,
+		League:        league,
+		UserAgent:     user,
+		LogLevel:      logLevel,
+		DBPath:        dbPath,
 	}, nil
 }

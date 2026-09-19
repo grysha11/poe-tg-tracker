@@ -28,7 +28,7 @@ func newBenchDB(tb testing.TB) *db.DB {
 	}
 	tb.Cleanup(func() { dbase.Close() })
 
-	for _, table := range []string{"market_snapshots", "default_rate_pairs", "currencies"} {
+	for _, table := range []string{"market_snapshots", "default_rate_pairs", "currencies", "fetch_log"} {
 		if _, err := dbase.Exec("TRUNCATE TABLE " + table); err != nil {
 			tb.Fatalf("truncate %s: %v", table, err)
 		}

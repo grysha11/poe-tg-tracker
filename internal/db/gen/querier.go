@@ -13,15 +13,18 @@ type Querier interface {
 	CountOrphanSnapshotCurrencies(ctx context.Context) (int64, error)
 	GetCurrencyByPath(ctx context.Context, itemPath string) (Currency, error)
 	InsertMarketSnapshot(ctx context.Context, arg InsertMarketSnapshotParams) error
+	LatestFetchBefore(ctx context.Context, hourUtc int64) (FetchLog, error)
 	LatestSnapshotHour(ctx context.Context, league string) (int64, error)
 	ListCurrencies(ctx context.Context) ([]Currency, error)
 	ListDefaultRatePairs(ctx context.Context) ([]ListDefaultRatePairsRow, error)
 	ListPlaceholderCurrencies(ctx context.Context) ([]Currency, error)
 	ListSnapshotRatesForHour(ctx context.Context, arg ListSnapshotRatesForHourParams) ([]ListSnapshotRatesForHourRow, error)
 	ListSnapshotsForHour(ctx context.Context, arg ListSnapshotsForHourParams) ([]MarketSnapshot, error)
+	RecordFetch(ctx context.Context, arg RecordFetchParams) error
 	UpsertCurrencyCurated(ctx context.Context, arg UpsertCurrencyCuratedParams) error
 	UpsertCurrencyPlaceholder(ctx context.Context, arg UpsertCurrencyPlaceholderParams) error
 	UpsertCurrencySynced(ctx context.Context, arg UpsertCurrencySyncedParams) error
+	UpsertDefaultRatePair(ctx context.Context, arg UpsertDefaultRatePairParams) error
 }
 
 var _ Querier = (*Queries)(nil)

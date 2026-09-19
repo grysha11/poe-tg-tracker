@@ -1,17 +1,20 @@
 package main
 
 import (
-	"bytes"
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/grysha11/poe-tg-tracker/internal/config"
 	"github.com/grysha11/poe-tg-tracker/internal/db"
+	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
 	"github.com/grysha11/poe-tg-tracker/internal/exchange"
 	"github.com/grysha11/poe-tg-tracker/internal/ingest"
 	"github.com/grysha11/poe-tg-tracker/internal/logger"
@@ -21,7 +24,6 @@ var backoff = []time.Duration{0, 10 * time.Second, 10 * time.Second, 10 * time.S
 
 func main() {
 	hourFlag := flag.Int64("hour", 0, "unix timestamp of hour to fetch (default: last settled hour)")
-	outFlag := flag.String("out", "", "output file path (default: $FETCH_OUT_PATH or /tmp/poe-fetch/last_fetch.json)")
 	flag.Parse()
 
 	config.LoadDotEnv()
@@ -50,24 +52,30 @@ func main() {
 		hour = exchange.AlignHour(time.Unix(*hourFlag, 0))
 	}
 
-	outPath := *outFlag
-	if outPath == "" {
-		outPath = os.Getenv("FETCH_OUT_PATH")
-	}
-	if outPath == "" {
-		outPath = "/tmp/poe-fetch/last_fetch.json"
-	}
-
 	client := exchange.NewClient(userAgent)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	prev, _ := os.ReadFile(outPath)
+	dbase, err := db.Open(dbDSN)
+	if err != nil {
+		log.Error("db open failed", "err", err)
+		os.Exit(1)
+	}
+	defer dbase.Close()
+
+	var prevHash string
+	switch prev, err := dbase.Q.LatestFetchBefore(ctx, hour.Unix()); {
+	case err == nil:
+		prevHash = prev.PayloadSha256
+	case !errors.Is(err, sql.ErrNoRows):
+		log.Error("load previous fetch failed", "err", err)
+		os.Exit(1)
+	}
 
 	var (
 		raw []byte
-		err error
+		sum string
 	)
 	for attempt, wait := range backoff {
 		if wait > 0 {
@@ -78,7 +86,9 @@ func main() {
 			log.Warn("fetch attempt failed", "attempt", attempt+1, "err", err)
 			continue
 		}
-		if len(prev) > 0 && bytes.Equal(prev, raw) {
+		hashed := sha256.Sum256(raw)
+		sum = hex.EncodeToString(hashed[:])
+		if prevHash != "" && sum == prevHash {
 			err = fmt.Errorf("unchanged data since last fetch")
 			log.Warn("fetch attempt returned unchanged data, retrying", "attempt", attempt+1)
 			continue
@@ -96,13 +106,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	dbase, err := db.Open(dbDSN)
-	if err != nil {
-		log.Error("db open failed", "err", err)
-		os.Exit(1)
-	}
-	defer dbase.Close()
-
 	fetchedAt := time.Now()
 	stats, err := ingest.Run(ctx, dbase, log, &digest, hour, fetchedAt)
 	if err != nil {
@@ -110,25 +113,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-		log.Error("mkdir failed", "path", outPath, "err", err)
-		os.Exit(1)
-	}
-
-	tmp := outPath + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
-		log.Error("write failed", "path", tmp, "err", err)
-		os.Exit(1)
-	}
-	if err := os.Rename(tmp, outPath); err != nil {
-		log.Error("rename failed", "path", outPath, "err", err)
+	if err := dbase.Q.RecordFetch(ctx, dbgen.RecordFetchParams{
+		HourUtc:       hour.Unix(),
+		PayloadSha256: sum,
+		FetchedAt:     fetchedAt.Unix(),
+	}); err != nil {
+		log.Error("record fetch failed", "err", err)
 		os.Exit(1)
 	}
 
 	log.Info("fetch complete",
 		"hour", hour.Format(time.RFC3339),
 		"bytes", len(raw),
-		"out", outPath,
 		"markets_seen", stats.MarketsSeen,
 		"markets_inserted", stats.MarketsInserted,
 		"markets_skipped", stats.MarketsSkipped,

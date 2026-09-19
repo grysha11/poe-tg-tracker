@@ -23,8 +23,6 @@ services:
       - .env
     environment:
       DB_DSN: "root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4"
-    volumes:
-      - poetracker-data:/data
     depends_on:
       mysql:
         condition: service_healthy
@@ -42,12 +40,9 @@ services:
       ofelia.job-run.fetch-hourly.schedule: "0 1 * * * *"
       ofelia.job-run.fetch-hourly.image: "poe-tg-tracker:latest"
       ofelia.job-run.fetch-hourly.pull: "false"
-      ofelia.job-run.fetch-hourly.command: "./fetcher -out /data/last_fetch.json"
-      ofelia.job-run.fetch-hourly.volume: "poetracker-data:/data"
-      ofelia.job-run.fetch-hourly.environment: '["POE_CONTACT=${POE_CONTACT}","FETCH_OUT_PATH=/data/last_fetch.json","DB_DSN=root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4","LOG_LEVEL=info"]'
+      ofelia.job-run.fetch-hourly.command: "./fetcher"
+      ofelia.job-run.fetch-hourly.environment: '["POE_CONTACT=${POE_CONTACT}","DB_DSN=root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4","LOG_LEVEL=info"]'
 
 volumes:
-  poetracker-data:
-    name: poetracker-data
   mysql-data:
     name: poetracker-mysql-data

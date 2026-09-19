@@ -19,10 +19,10 @@ Starts MySQL + the bot + hourly fetch-cron. MySQL data lives on the `poetracker-
 Normally runs on cron. To trigger a fetch now instead of waiting:
 
 ```
-docker compose exec bot ./fetcher -out /data/last_fetch.json
+docker compose exec bot ./fetcher
 ```
 
-Flags: `-hour <unix_ts>` to backfill a specific hour, `-out <path>` for output file.
+Flag: `-hour <unix_ts>` to backfill a specific hour. Stale-payload detection (the API sometimes re-serves the previous hour) uses a payload hash stored in the `fetch_log` table, so the fetcher keeps no local state.
 
 ## Curate
 
@@ -40,6 +40,17 @@ Bulk-upserts real names for all known currencies straight into the DB. Safe to r
 ```
 docker compose exec bot ./curate sync
 ```
+
+### First-run bootstrap
+
+On an empty database the bot refuses to start (no default rate pairs). Seed in this order:
+
+```
+docker compose run --rm bot ./curate sync
+docker compose run --rm bot ./curate bootstrap
+```
+
+`bootstrap` seeds `default_rate_pairs` (Divine -> Chaos, Divine -> Exalt) by `item_path`; safe to re-run.
 
 ## Tests
 

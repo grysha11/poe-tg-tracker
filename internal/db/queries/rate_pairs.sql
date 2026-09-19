@@ -25,3 +25,8 @@ SELECT COUNT(*) FROM default_rate_pairs rp
 LEFT JOIN currencies base  ON base.currency_id  = rp.base_currency_id
 LEFT JOIN currencies quote ON quote.currency_id = rp.quote_currency_id
 WHERE base.currency_id IS NULL OR quote.currency_id IS NULL;
+
+-- name: UpsertDefaultRatePair :exec
+INSERT INTO default_rate_pairs (base_currency_id, quote_currency_id, sort_order)
+VALUES (?, ?, ?)
+ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order);

@@ -99,3 +99,20 @@ func (q *Queries) ListDefaultRatePairs(ctx context.Context) ([]ListDefaultRatePa
 	}
 	return items, nil
 }
+
+const upsertDefaultRatePair = `-- name: UpsertDefaultRatePair :exec
+INSERT INTO default_rate_pairs (base_currency_id, quote_currency_id, sort_order)
+VALUES (?, ?, ?)
+ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order)
+`
+
+type UpsertDefaultRatePairParams struct {
+	BaseCurrencyID  int64 `json:"base_currency_id"`
+	QuoteCurrencyID int64 `json:"quote_currency_id"`
+	SortOrder       int64 `json:"sort_order"`
+}
+
+func (q *Queries) UpsertDefaultRatePair(ctx context.Context, arg UpsertDefaultRatePairParams) error {
+	_, err := q.db.ExecContext(ctx, upsertDefaultRatePair, arg.BaseCurrencyID, arg.QuoteCurrencyID, arg.SortOrder)
+	return err
+}

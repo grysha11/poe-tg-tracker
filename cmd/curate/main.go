@@ -39,6 +39,10 @@ func main() {
 		dbase := mustOpenDB()
 		defer dbase.Close()
 		runSync(ctx, dbase, os.Args[2:])
+	case "bootstrap":
+		dbase := mustOpenDB()
+		defer dbase.Close()
+		runBootstrap(ctx, dbase)
 	default:
 		usage()
 		os.Exit(1)
@@ -70,6 +74,10 @@ Usage:
 
   curate set -path <item_path> -trade-id <trade_id> -name <name> [-emoji <emoji_id>]
       Curate a placeholder into a real currency.
+
+  curate bootstrap
+      Seed default_rate_pairs (Divine -> Chaos, Divine -> Exalt). Run
+      "curate sync" first so the currencies exist. Safe to re-run.
 
   curate sync [-realm poe2] [-league "Forbidden Rites"]
       Upsert trade_id/name directly into the DB for every currency known to
@@ -186,4 +194,36 @@ func runSync(ctx context.Context, dbase *db.DB, args []string) {
 	}
 
 	fmt.Printf("synced %d currencies (%d skipped: no item_path)\n", len(rows), skipped)
+}
+
+const divinePath = "Metadata/Items/Currency/CurrencyModValues"
+
+var defaultQuotePaths = []string{
+	"Metadata/Items/Currency/CurrencyRerollRare",   // Chaos
+	"Metadata/Items/Currency/CurrencyAddModToRare", // Exalt
+}
+
+func runBootstrap(ctx context.Context, dbase *db.DB) {
+	base, err := dbase.Q.GetCurrencyByPath(ctx, divinePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "curate: base currency %s not found (run \"curate sync\" first): %v\n", divinePath, err)
+		os.Exit(1)
+	}
+
+	for i, path := range defaultQuotePaths {
+		quote, err := dbase.Q.GetCurrencyByPath(ctx, path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "curate: quote currency %s not found (run \"curate sync\" first): %v\n", path, err)
+			os.Exit(1)
+		}
+		if err := dbase.Q.UpsertDefaultRatePair(ctx, dbgen.UpsertDefaultRatePairParams{
+			BaseCurrencyID:  base.CurrencyID,
+			QuoteCurrencyID: quote.CurrencyID,
+			SortOrder:       int64(i),
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "curate: bootstrap upsert failed for %s: %v\n", path, err)
+			os.Exit(1)
+		}
+		fmt.Printf("default pair: %s -> %s\n", base.Name, quote.Name)
+	}
 }

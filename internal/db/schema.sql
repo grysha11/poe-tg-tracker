@@ -37,3 +37,10 @@ CREATE TABLE default_rate_pairs (
   sort_order        BIGINT NOT NULL DEFAULT 0,
   PRIMARY KEY (base_currency_id, quote_currency_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE fetch_log (
+  hour_utc       BIGINT NOT NULL,
+  payload_sha256 CHAR(64) NOT NULL,
+  fetched_at     BIGINT NOT NULL,
+  PRIMARY KEY (hour_utc)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -25,6 +25,12 @@ type DefaultRatePair struct {
 	SortOrder       int64 `json:"sort_order"`
 }
 
+type FetchLog struct {
+	HourUtc       int64  `json:"hour_utc"`
+	PayloadSha256 string `json:"payload_sha256"`
+	FetchedAt     int64  `json:"fetched_at"`
+}
+
 type MarketSnapshot struct {
 	ID            int64  `json:"id"`
 	HourUtc       int64  `json:"hour_utc"`

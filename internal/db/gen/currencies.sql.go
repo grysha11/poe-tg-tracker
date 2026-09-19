@@ -105,12 +105,12 @@ func (q *Queries) ListPlaceholderCurrencies(ctx context.Context) ([]Currency, er
 const upsertCurrencyCurated = `-- name: UpsertCurrencyCurated :exec
 INSERT INTO currencies (item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at)
 VALUES (?, ?, ?, ?, 0, ?, ?)
-ON CONFLICT (item_path) DO UPDATE SET
-    trade_id       = excluded.trade_id,
-    name           = excluded.name,
-    emoji_id       = excluded.emoji_id,
+ON DUPLICATE KEY UPDATE
+    trade_id       = VALUES(trade_id),
+    name           = VALUES(name),
+    emoji_id       = VALUES(emoji_id),
     is_placeholder = 0,
-    updated_at     = excluded.updated_at
+    updated_at     = VALUES(updated_at)
 `
 
 type UpsertCurrencyCuratedParams struct {
@@ -137,7 +137,7 @@ func (q *Queries) UpsertCurrencyCurated(ctx context.Context, arg UpsertCurrencyC
 const upsertCurrencyPlaceholder = `-- name: UpsertCurrencyPlaceholder :exec
 INSERT INTO currencies (item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at)
 VALUES (?, ?, ?, NULL, 1, ?, ?)
-ON CONFLICT (item_path) DO NOTHING
+ON DUPLICATE KEY UPDATE item_path = item_path
 `
 
 type UpsertCurrencyPlaceholderParams struct {
@@ -150,6 +150,35 @@ type UpsertCurrencyPlaceholderParams struct {
 
 func (q *Queries) UpsertCurrencyPlaceholder(ctx context.Context, arg UpsertCurrencyPlaceholderParams) error {
 	_, err := q.db.ExecContext(ctx, upsertCurrencyPlaceholder,
+		arg.ItemPath,
+		arg.TradeID,
+		arg.Name,
+		arg.DiscoveredAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const upsertCurrencySynced = `-- name: UpsertCurrencySynced :exec
+INSERT INTO currencies (item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at)
+VALUES (?, ?, ?, NULL, 0, ?, ?)
+ON DUPLICATE KEY UPDATE
+    trade_id       = VALUES(trade_id),
+    name           = VALUES(name),
+    is_placeholder = 0,
+    updated_at     = VALUES(updated_at)
+`
+
+type UpsertCurrencySyncedParams struct {
+	ItemPath     string `json:"item_path"`
+	TradeID      string `json:"trade_id"`
+	Name         string `json:"name"`
+	DiscoveredAt int64  `json:"discovered_at"`
+	UpdatedAt    int64  `json:"updated_at"`
+}
+
+func (q *Queries) UpsertCurrencySynced(ctx context.Context, arg UpsertCurrencySyncedParams) error {
+	_, err := q.db.ExecContext(ctx, upsertCurrencySynced,
 		arg.ItemPath,
 		arg.TradeID,
 		arg.Name,

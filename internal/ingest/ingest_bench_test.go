@@ -17,14 +17,23 @@ import (
 
 func newBenchDB(tb testing.TB) *db.DB {
 	tb.Helper()
-	dbase, err := db.Open(filepath.Join(tb.TempDir(), "bench.db"))
+	dsn := os.Getenv("TEST_DB_DSN")
+	if dsn == "" {
+		tb.Fatal("TEST_DB_DSN env required (e.g. run: docker compose up -d mysql)")
+	}
+
+	dbase, err := db.Open(dsn)
 	if err != nil {
 		tb.Fatalf("open db: %v", err)
 	}
 	tb.Cleanup(func() { dbase.Close() })
-	if err := dbase.Migrate(); err != nil {
-		tb.Fatalf("migrate: %v", err)
+
+	for _, table := range []string{"market_snapshots", "default_rate_pairs", "currencies", "fetch_log"} {
+		if _, err := dbase.Exec("TRUNCATE TABLE " + table); err != nil {
+			tb.Fatalf("truncate %s: %v", table, err)
+		}
 	}
+
 	return dbase
 }
 
@@ -43,16 +52,6 @@ func loadRealDigest(tb testing.TB) *exchange.Digest {
 		tb.Fatalf("decode real digest fixture: %v", err)
 	}
 	return &d
-}
-
-func BenchmarkMigrate(b *testing.B) {
-	dbase := newBenchDB(b)
-	b.ReportAllocs()
-	for b.Loop() {
-		if err := dbase.Migrate(); err != nil {
-			b.Fatalf("migrate: %v", err)
-		}
-	}
 }
 
 func BenchmarkListCurrencies(b *testing.B) {

@@ -4,17 +4,17 @@ INSERT INTO market_snapshots (
     volume_a, volume_b, lowest_ratio_a, lowest_ratio_b, highest_ratio_a, highest_ratio_b,
     fetched_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (hour_utc, league, item_a_id, item_b_id) DO UPDATE SET
-    volume_a        = excluded.volume_a,
-    volume_b        = excluded.volume_b,
-    lowest_ratio_a  = excluded.lowest_ratio_a,
-    lowest_ratio_b  = excluded.lowest_ratio_b,
-    highest_ratio_a = excluded.highest_ratio_a,
-    highest_ratio_b = excluded.highest_ratio_b,
-    fetched_at      = excluded.fetched_at;
+ON DUPLICATE KEY UPDATE
+    volume_a        = VALUES(volume_a),
+    volume_b        = VALUES(volume_b),
+    lowest_ratio_a  = VALUES(lowest_ratio_a),
+    lowest_ratio_b  = VALUES(lowest_ratio_b),
+    highest_ratio_a = VALUES(highest_ratio_a),
+    highest_ratio_b = VALUES(highest_ratio_b),
+    fetched_at      = VALUES(fetched_at);
 
 -- name: LatestSnapshotHour :one
-SELECT MAX(hour_utc) AS hour_utc FROM market_snapshots WHERE league = ?;
+SELECT CAST(COALESCE(MAX(hour_utc), 0) AS SIGNED) AS hour_utc FROM market_snapshots WHERE league = ?;
 
 -- name: ListSnapshotsForHour :many
 SELECT * FROM market_snapshots WHERE hour_utc = ? AND league = ?;

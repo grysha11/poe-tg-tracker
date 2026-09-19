@@ -9,15 +9,18 @@ import (
 )
 
 type Querier interface {
+	CountOrphanRatePairCurrencies(ctx context.Context) (int64, error)
+	CountOrphanSnapshotCurrencies(ctx context.Context) (int64, error)
 	GetCurrencyByPath(ctx context.Context, itemPath string) (Currency, error)
 	InsertMarketSnapshot(ctx context.Context, arg InsertMarketSnapshotParams) error
-	LatestSnapshotHour(ctx context.Context, league string) (interface{}, error)
+	LatestSnapshotHour(ctx context.Context, league string) (int64, error)
 	ListCurrencies(ctx context.Context) ([]Currency, error)
 	ListDefaultRatePairs(ctx context.Context) ([]ListDefaultRatePairsRow, error)
 	ListPlaceholderCurrencies(ctx context.Context) ([]Currency, error)
 	ListSnapshotsForHour(ctx context.Context, arg ListSnapshotsForHourParams) ([]MarketSnapshot, error)
 	UpsertCurrencyCurated(ctx context.Context, arg UpsertCurrencyCuratedParams) error
 	UpsertCurrencyPlaceholder(ctx context.Context, arg UpsertCurrencyPlaceholderParams) error
+	UpsertCurrencySynced(ctx context.Context, arg UpsertCurrencySyncedParams) error
 }
 
 var _ Querier = (*Queries)(nil)

@@ -36,7 +36,7 @@ type Config struct {
 	CacheTTL        time.Duration
 	MinDivineVolume uint64
 	LogLevel        string
-	DBPath          string
+	DBDSN           string
 }
 
 func takeEnv(key string) (string, error) {
@@ -71,7 +71,7 @@ func LoadConfig() (Config, error) {
 		logLevel = "info"
 	}
 
-	dbPath, err := takeEnv("DB_PATH")
+	dbDSN, err := takeEnv("DB_DSN")
 	if err != nil {
 		return Config{}, err
 	}
@@ -83,6 +83,6 @@ func LoadConfig() (Config, error) {
 		MinDivineVolume: 50,
 		CacheTTL:        10 * time.Minute,
 		LogLevel:        logLevel,
-		DBPath:          dbPath,
+		DBDSN:           dbDSN,
 	}, nil
 }

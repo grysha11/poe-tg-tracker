@@ -39,9 +39,9 @@ func main() {
 	}
 	log := logger.New(logLevel)
 
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		fmt.Fprintln(os.Stderr, "fetcher: DB_PATH env required")
+	dbDSN := os.Getenv("DB_DSN")
+	if dbDSN == "" {
+		fmt.Fprintln(os.Stderr, "fetcher: DB_DSN env required")
 		os.Exit(1)
 	}
 
@@ -96,7 +96,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	dbase, err := db.Open(dbPath)
+	dbase, err := db.Open(dbDSN)
 	if err != nil {
 		log.Error("db open failed", "err", err)
 		os.Exit(1)

@@ -22,10 +22,6 @@ type Stats struct {
 func Run(ctx context.Context, dbase *db.DB, log *slog.Logger, digest *exchange.Digest, hour, fetchedAt time.Time) (Stats, error) {
 	var stats Stats
 
-	if err := dbase.Migrate(); err != nil {
-		return stats, fmt.Errorf("migrate: %w", err)
-	}
-
 	currencies, err := dbase.Q.ListCurrencies(ctx)
 	if err != nil {
 		return stats, fmt.Errorf("list currencies: %w", err)

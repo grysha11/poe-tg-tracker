@@ -3,8 +3,9 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/go-sql-driver/mysql"
 
 	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
 )
@@ -14,23 +15,19 @@ type DB struct {
 	Q *dbgen.Queries
 }
 
-func Open(path string) (*DB, error) {
-	sqlDB, err := sql.Open("sqlite3", path)
+func Open(dsn string) (*DB, error) {
+	sqlDB, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
+		return nil, fmt.Errorf("open mysql: %w", err)
 	}
 
-	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(time.Minute)
 
-	for _, pragma := range []string{
-		"PRAGMA foreign_keys = ON",
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000",
-	} {
-		if _, err := sqlDB.Exec(pragma); err != nil {
-			sqlDB.Close()
-			return nil, fmt.Errorf("set %q: %w", pragma, err)
-		}
+	if err := sqlDB.Ping(); err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("ping mysql: %w", err)
 	}
 
 	return &DB{DB: sqlDB, Q: dbgen.New(sqlDB)}, nil

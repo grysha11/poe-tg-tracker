@@ -41,17 +41,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	dbase, err := db.Open(cfg.DBPath)
+	dbase, err := db.Open(cfg.DBDSN)
 	if err != nil {
 		log.Error("db open failed", "err", err)
 		os.Exit(1)
 	}
 	defer dbase.Close()
-
-	if err := dbase.Migrate(); err != nil {
-		log.Error("db migrate failed", "err", err)
-		os.Exit(1)
-	}
 
 	base, quotes, err := loadDefaultRates(ctx, dbase.Q)
 	if err != nil {
@@ -113,10 +108,18 @@ func loadDefaultRates(ctx context.Context, q *dbgen.Queries) (exchange.Currency,
 		return exchange.Currency{}, nil, fmt.Errorf("no default rate pairs configured")
 	}
 
-	base := exchange.Currency{ID: rows[0].BaseItemPath, Name: rows[0].BaseName, TradeID: rows[0].BaseTradeID}
+	for _, r := range rows {
+		if !r.BaseItemPath.Valid || !r.QuoteItemPath.Valid {
+			return exchange.Currency{}, nil, fmt.Errorf(
+				"default_rate_pairs row (base_currency_id=%d, quote_currency_id=%d) references a missing currency",
+				r.BaseCurrencyID, r.QuoteCurrencyID)
+		}
+	}
+
+	base := exchange.Currency{ID: rows[0].BaseItemPath.String, Name: rows[0].BaseName.String, TradeID: rows[0].BaseTradeID.String}
 	quotes := make([]exchange.Currency, 0, len(rows))
 	for _, r := range rows {
-		quotes = append(quotes, exchange.Currency{ID: r.QuoteItemPath, Name: r.QuoteName, TradeID: r.QuoteTradeID})
+		quotes = append(quotes, exchange.Currency{ID: r.QuoteItemPath.String, Name: r.QuoteName.String, TradeID: r.QuoteTradeID.String})
 	}
 	return base, quotes, nil
 }

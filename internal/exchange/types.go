@@ -1,10 +1,6 @@
 package exchange
 
-import (
-	"net/http"
-	"sync"
-	"time"
-)
+import "net/http"
 
 type Currency struct {
 	ID      string
@@ -27,43 +23,28 @@ type Market struct {
 }
 
 type Rate struct {
-	Quote     string
-	VWAP      float64
-	Low       float64
-	High      float64
-	DivineVol uint64
-	QuoteVol  uint64
+	Quote    string
+	VWAP     float64
+	Low      float64
+	High     float64
+	BaseVol  uint64
+	QuoteVol uint64
 }
 
-type Snapshot struct {
-	League  string
-	HourUTC time.Time
-	Base    string // currency all rates are quoted against, e.g. Divine.ID
-	Rates   map[string]Rate
+type SnapshotRow struct {
+	ItemA, ItemB                 Currency
+	VolumeA, VolumeB             uint64
+	LowestRatioA, LowestRatioB   uint64
+	HighestRatioA, HighestRatioB uint64
 }
 
-func (s *Snapshot) Thin(min uint64) bool {
-	for _, r := range s.Rates {
-		if r.DivineVol < min {
-			return true
-		}
-	}
-	return false
+type CurrencyRate struct {
+	Currency Currency
+	Rate     Rate
+	Via      *Currency
 }
 
 type Client struct {
 	HTTP      *http.Client
 	UserAgent string
-}
-
-type Cache struct {
-	client *Client
-	league string
-	base   string
-	quotes []Currency
-	ttl    time.Duration
-
-	mu      sync.Mutex
-	snap    *Snapshot
-	fetched time.Time
 }

@@ -17,6 +17,7 @@ type Querier interface {
 	ListCurrencies(ctx context.Context) ([]Currency, error)
 	ListDefaultRatePairs(ctx context.Context) ([]ListDefaultRatePairsRow, error)
 	ListPlaceholderCurrencies(ctx context.Context) ([]Currency, error)
+	ListSnapshotRatesForHour(ctx context.Context, arg ListSnapshotRatesForHourParams) ([]ListSnapshotRatesForHourRow, error)
 	ListSnapshotsForHour(ctx context.Context, arg ListSnapshotsForHourParams) ([]MarketSnapshot, error)
 	UpsertCurrencyCurated(ctx context.Context, arg UpsertCurrencyCuratedParams) error
 	UpsertCurrencyPlaceholder(ctx context.Context, arg UpsertCurrencyPlaceholderParams) error

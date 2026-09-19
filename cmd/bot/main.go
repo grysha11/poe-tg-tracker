@@ -22,7 +22,7 @@ import (
 type App struct {
 	bot    *telegram.Bot
 	client *exchange.Client
-	cache  *exchange.Cache
+	q      *dbgen.Queries
 	base   exchange.Currency
 	quotes []exchange.Currency
 	cfg    config.Config
@@ -54,18 +54,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	client := exchange.NewClient(cfg.UserAgent)
 	app := &App{
 		bot:    telegram.NewBot(cfg.TelegramToken),
-		client: client,
-		cache:  exchange.NewCache(client, cfg.League, base.ID, quotes, cfg.CacheTTL),
+		client: exchange.NewClient(cfg.UserAgent),
+		q:      dbase.Q,
 		base:   base,
 		quotes: quotes,
 		cfg:    cfg,
 		log:    log,
 	}
 
-	log.Info("starting", "league", cfg.League, "min_divine_vol", cfg.MinDivineVolume)
+	log.Info("starting", "league", cfg.League)
 
 	var offset int64
 	for {
@@ -138,21 +137,21 @@ func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
 		text := strings.Join([]string{
 			"<b>PoE2 rate tracker</b>",
 			"",
-			"Tap the button for Divine rates from the last settled hour.",
+			"Tap a button for the top Currency rates (priced in Divine) from the latest fetched hour.",
 			"",
 			"/rates — show rates",
 			"/leagues — list league strings",
 		}, "\n")
-		a.send(ctx, msg.Chat.ID, text, telegram.RatesKeyboard())
+		a.send(ctx, msg.Chat.ID, text, telegram.RatesKeyboard("volume"))
 
 	case "rates":
-		snap, _, err := a.cache.Get(ctx)
+		text, err := a.buildRates(ctx, "volume")
 		if err != nil {
 			a.log.Error("rates fetch failed", "err", err)
-			a.send(ctx, msg.Chat.ID, "Couldn't get rates right now. Try again shortly.", telegram.RatesKeyboard())
+			a.send(ctx, msg.Chat.ID, "Couldn't get rates right now. Try again shortly.", telegram.RatesKeyboard("volume"))
 			return
 		}
-		a.send(ctx, msg.Chat.ID, a.formatRates(snap), telegram.RatesKeyboard())
+		a.send(ctx, msg.Chat.ID, text, telegram.RatesKeyboard("volume"))
 
 	case "leagues":
 		d, err := a.client.Fetch(ctx, exchange.AlignHour(time.Now()).Add(-time.Hour).Unix())
@@ -174,28 +173,24 @@ func (a *App) handleCallback(ctx context.Context, cb *telegram.CallbackQuery) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	if cb.Data != "rates" || cb.Message == nil {
+	prefix, view, hasView := strings.Cut(cb.Data, ":")
+	if prefix != "rates" || (view != "volume" && view != "price") || !hasView || cb.Message == nil {
 		_ = a.bot.AnswerCallbackQuery(ctx, cb.ID, "")
 		return
 	}
 
-	snap, fresh, err := a.cache.Get(ctx)
+	text, err := a.buildRates(ctx, view)
 	if err != nil {
 		a.log.Error("callback rates fetch failed", "err", err)
-		_ = a.bot.AnswerCallbackQuery(ctx, cb.ID, "Couldn't reach the API")
+		_ = a.bot.AnswerCallbackQuery(ctx, cb.ID, "Couldn't load rates")
 		return
 	}
 
-	toast := "Already current"
-	if fresh {
-		toast = "Updated"
-	}
-	if err := a.bot.AnswerCallbackQuery(ctx, cb.ID, toast); err != nil {
+	if err := a.bot.AnswerCallbackQuery(ctx, cb.ID, "Updated"); err != nil {
 		a.log.Error("answerCallbackQuery failed", "err", err)
 	}
 
-	if err := a.bot.EditMessageText(ctx, cb.Message.Chat.ID, cb.Message.MessageID,
-		a.formatRates(snap), telegram.RatesKeyboard()); err != nil {
+	if err := a.bot.EditMessageText(ctx, cb.Message.Chat.ID, cb.Message.MessageID, text, telegram.RatesKeyboard(view)); err != nil {
 		a.log.Error("editMessageText failed", "err", err)
 	}
 }
@@ -206,24 +201,118 @@ func (a *App) send(ctx context.Context, chatID int64, text string, markup *teleg
 	}
 }
 
-func (a *App) formatRates(s *exchange.Snapshot) string {
+func (a *App) buildRates(ctx context.Context, view string) (string, error) {
+	hourUnix, err := a.q.LatestSnapshotHour(ctx, a.cfg.League)
+	if err != nil {
+		return "", err
+	}
+	if hourUnix == 0 {
+		return "", fmt.Errorf("no snapshots yet for league %q", a.cfg.League)
+	}
+
+	dbRows, err := a.q.ListSnapshotRatesForHour(ctx, dbgen.ListSnapshotRatesForHourParams{
+		HourUtc: hourUnix,
+		League:  a.cfg.League,
+	})
+	if err != nil {
+		return "", err
+	}
+	rows := toSnapshotRows(dbRows)
+
+	var ranked []exchange.CurrencyRate
+	if view == "price" {
+		chaos, _ := quoteByTradeID(a.quotes, "chaos")
+		exalt, _ := quoteByTradeID(a.quotes, "exalted")
+		ranked = exchange.RankByPrice(rows, a.base, chaos, exalt, 10)
+	} else {
+		ranked = exchange.RankByVolume(rows, a.base, 10)
+	}
+
+	return formatRanked(view, a.base, ranked, time.Unix(hourUnix, 0).UTC(), a.cfg.League), nil
+}
+
+func toSnapshotRows(rows []dbgen.ListSnapshotRatesForHourRow) []exchange.SnapshotRow {
+	out := make([]exchange.SnapshotRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, exchange.SnapshotRow{
+			ItemA:         exchange.Currency{ID: r.ItemAPath, Name: r.ItemAName, TradeID: r.ItemATradeID},
+			ItemB:         exchange.Currency{ID: r.ItemBPath, Name: r.ItemBName, TradeID: r.ItemBTradeID},
+			VolumeA:       uint64(r.VolumeA),
+			VolumeB:       uint64(r.VolumeB),
+			LowestRatioA:  uint64(r.LowestRatioA),
+			LowestRatioB:  uint64(r.LowestRatioB),
+			HighestRatioA: uint64(r.HighestRatioA),
+			HighestRatioB: uint64(r.HighestRatioB),
+		})
+	}
+	return out
+}
+
+func quoteByTradeID(quotes []exchange.Currency, tradeID string) (exchange.Currency, bool) {
+	for _, q := range quotes {
+		if q.TradeID == tradeID {
+			return q, true
+		}
+	}
+	return exchange.Currency{}, false
+}
+
+func formatValue(v float64) string {
+	switch {
+	case v >= 100:
+		return fmt.Sprintf("%.0f", v)
+	case v >= 10:
+		return fmt.Sprintf("%.1f", v)
+	default:
+		return fmt.Sprintf("%.2f", v)
+	}
+}
+
+func formatRanked(view string, base exchange.Currency, ranked []exchange.CurrencyRate, hour time.Time, league string) string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "%s <b>%s</b>\n\n", emoji.Tag(a.base.TradeID), s.League)
-	for _, q := range a.quotes {
-		r, ok := s.Rates[q.ID]
-		if !ok {
-			continue
+	title, icon := "Top 10 by volume", "📊"
+	if view == "price" {
+		title, icon = "Most expensive", "💰"
+	}
+	fmt.Fprintf(&b, "%s <b>%s — %s</b>\n\n", icon, title, league)
+
+	if len(ranked) == 0 {
+		b.WriteString("No data for this hour yet.\n\n")
+	}
+
+	for _, cr := range ranked {
+		via := ""
+		if cr.Via != nil {
+			via = fmt.Sprintf(" <i>(via %s)</i>", cr.Via.Name)
 		}
-		fmt.Fprintf(&b, "%s 1 %s = <b>%.2f</b> %s\n", emoji.Tag(q.TradeID), a.base.Name, r.VWAP, q.Name)
-		fmt.Fprintf(&b, "<i>range %.1f–%.1f · %d %s traded</i>\n\n", r.Low, r.High, r.DivineVol, a.base.Name)
+
+		value, low, high := cr.Rate.VWAP, cr.Rate.Low, cr.Rate.High
+		leftName, rightName := base.Name, cr.Currency.Name
+		leftTradeID, rightTradeID := base.TradeID, cr.Currency.TradeID
+		if value < 1 {
+			invLow, invHigh := low, high
+			if high > 0 {
+				invLow = 1 / high
+			}
+			if low > 0 {
+				invHigh = 1 / low
+			}
+			value, low, high = 1/value, invLow, invHigh
+			leftName, rightName = cr.Currency.Name, base.Name
+			leftTradeID, rightTradeID = cr.Currency.TradeID, base.TradeID
+		}
+
+		fmt.Fprintf(&b, "%s 1 %s = <b>%s</b> %s %s%s\n",
+			emoji.Tag(leftTradeID), leftName, formatValue(value), emoji.Tag(rightTradeID), rightName, via)
+		if cr.Via == nil {
+			fmt.Fprintf(&b, "<i>range %s–%s · %d %s traded</i>\n\n", formatValue(low), formatValue(high), cr.Rate.BaseVol, base.Name)
+		} else {
+			fmt.Fprintf(&b, "<i>range %s–%s %s</i>\n\n", formatValue(low), formatValue(high), base.Name)
+		}
 	}
 
-	if s.Thin(a.cfg.MinDivineVolume) {
-		fmt.Fprintf(&b, "⚠️ Thin hour — few trades, treat as indicative\n\n")
-	}
-
-	fmt.Fprintf(&b, "Hour from %s UTC\n", s.HourUTC.Format("15:04 Jan 2"))
+	fmt.Fprintf(&b, "Hour from %s UTC\n", hour.Format("15:04 Jan 2"))
 	fmt.Fprintf(&b, "<i>checked %s UTC</i>", time.Now().UTC().Format("15:04:05"))
 
 	return b.String()

@@ -63,39 +63,24 @@ func AlignHour(t time.Time) time.Time {
 	return t.UTC().Truncate(time.Hour)
 }
 
-func findMarket(markets []Market, league, base, quote string) (Market, bool) {
-	for _, m := range markets {
-		if m.League != league || len(m.MarketPair) != 2 {
-			continue
-		}
-		a, b := m.MarketPair[0], m.MarketPair[1]
-		if (a == base && b == quote) || (a == quote && b == base) {
-			return m, true
-		}
-	}
-	return Market{}, false
-}
-
-func rateFrom(m Market, base, quote string) (Rate, bool) {
-	baseVol := m.VolumeTraded[base]
-	quoteVol := m.VolumeTraded[quote]
+func computeRate(quoteID string, baseVol, quoteVol, baseLow, quoteLow, baseHigh, quoteHigh uint64) (Rate, bool) {
 	if baseVol == 0 || quoteVol == 0 {
 		return Rate{}, false
 	}
 
 	r := Rate{
-		Quote:     quote,
-		VWAP:      float64(quoteVol) / float64(baseVol),
-		DivineVol: baseVol,
-		QuoteVol:  quoteVol,
+		Quote:    quoteID,
+		VWAP:     float64(quoteVol) / float64(baseVol),
+		BaseVol:  baseVol,
+		QuoteVol: quoteVol,
 	}
 
 	var bounds []float64
-	for _, side := range []map[string]uint64{m.LowestRatio, m.HighestRatio} {
-		if side[base] == 0 {
-			continue
-		}
-		bounds = append(bounds, float64(side[quote])/float64(side[base]))
+	if baseLow != 0 {
+		bounds = append(bounds, float64(quoteLow)/float64(baseLow))
+	}
+	if baseHigh != 0 {
+		bounds = append(bounds, float64(quoteHigh)/float64(baseHigh))
 	}
 	sort.Float64s(bounds)
 
@@ -124,71 +109,4 @@ func Leagues(d *Digest) []string {
 		out[i] = fmt.Sprintf("%s (%d markets)", lg, counts[lg])
 	}
 	return out
-}
-
-func snapshotFrom(d *Digest, league, base string, quotes []Currency, hour time.Time) (*Snapshot, bool) {
-	rates := make(map[string]Rate, len(quotes))
-	for _, quote := range quotes {
-		m, ok := findMarket(d.Markets, league, base, quote.ID)
-		if !ok {
-			continue
-		}
-		r, ok := rateFrom(m, base, quote.ID)
-		if !ok {
-			continue
-		}
-		rates[quote.ID] = r
-	}
-	if len(rates) == 0 {
-		return nil, false
-	}
-	return &Snapshot{League: league, HourUTC: hour, Base: base, Rates: rates}, true
-}
-
-func (c *Client) LastHour(ctx context.Context, league, base string, quotes []Currency) (*Snapshot, error) {
-	newest := AlignHour(time.Now()).Add(-time.Hour)
-
-	var firstErr error
-	for _, hour := range []time.Time{newest, newest.Add(-time.Hour)} {
-		d, err := c.Fetch(ctx, hour.Unix())
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
-		}
-		if snap, ok := snapshotFrom(d, league, base, quotes, hour); ok {
-			return snap, nil
-		}
-	}
-
-	if firstErr != nil {
-		return nil, firstErr
-	}
-	return nil, fmt.Errorf("no markets for league %q in the last settled hour", league)
-}
-
-func NewCache(c *Client, league, base string, quotes []Currency, ttl time.Duration) *Cache {
-	return &Cache{client: c, league: league, base: base, quotes: quotes, ttl: ttl}
-}
-
-func (c *Cache) Get(ctx context.Context) (*Snapshot, bool, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.snap != nil && time.Since(c.fetched) < c.ttl {
-		return c.snap, false, nil
-	}
-
-	snap, err := c.client.LastHour(ctx, c.league, c.base, c.quotes)
-	if err != nil {
-		if c.snap != nil {
-			return c.snap, false, nil
-		}
-		return nil, false, err
-	}
-
-	c.snap = snap
-	c.fetched = time.Now()
-	return snap, true, nil
 }

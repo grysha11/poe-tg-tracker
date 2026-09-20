@@ -7,31 +7,64 @@ package dbgen
 
 import (
 	"context"
+	"database/sql"
 )
+
+const countOrphanRatePairCurrencies = `-- name: CountOrphanRatePairCurrencies :one
+SELECT COUNT(*) FROM default_rate_pairs rp
+LEFT JOIN currencies base  ON base.currency_id  = rp.base_currency_id
+LEFT JOIN currencies quote ON quote.currency_id = rp.quote_currency_id
+WHERE base.currency_id IS NULL OR quote.currency_id IS NULL
+`
+
+func (q *Queries) CountOrphanRatePairCurrencies(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countOrphanRatePairCurrencies)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countOrphanSnapshotCurrencies = `-- name: CountOrphanSnapshotCurrencies :one
+SELECT COUNT(*) FROM market_snapshots ms
+LEFT JOIN currencies a ON a.currency_id = ms.item_a_id
+LEFT JOIN currencies b ON b.currency_id = ms.item_b_id
+WHERE a.currency_id IS NULL OR b.currency_id IS NULL
+`
+
+func (q *Queries) CountOrphanSnapshotCurrencies(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countOrphanSnapshotCurrencies)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
 
 const listDefaultRatePairs = `-- name: ListDefaultRatePairs :many
 SELECT
-    rp.sort_order   AS sort_order,
-    base.item_path  AS base_item_path,
-    base.name       AS base_name,
-    base.trade_id   AS base_trade_id,
-    quote.item_path AS quote_item_path,
-    quote.name      AS quote_name,
-    quote.trade_id  AS quote_trade_id
+    rp.base_currency_id  AS base_currency_id,
+    rp.quote_currency_id AS quote_currency_id,
+    rp.sort_order        AS sort_order,
+    base.item_path       AS base_item_path,
+    base.name            AS base_name,
+    base.trade_id        AS base_trade_id,
+    quote.item_path      AS quote_item_path,
+    quote.name           AS quote_name,
+    quote.trade_id       AS quote_trade_id
 FROM default_rate_pairs rp
-JOIN currencies base ON base.currency_id = rp.base_currency_id
-JOIN currencies quote ON quote.currency_id = rp.quote_currency_id
+LEFT JOIN currencies base  ON base.currency_id  = rp.base_currency_id
+LEFT JOIN currencies quote ON quote.currency_id = rp.quote_currency_id
 ORDER BY rp.sort_order
 `
 
 type ListDefaultRatePairsRow struct {
-	SortOrder     int64  `json:"sort_order"`
-	BaseItemPath  string `json:"base_item_path"`
-	BaseName      string `json:"base_name"`
-	BaseTradeID   string `json:"base_trade_id"`
-	QuoteItemPath string `json:"quote_item_path"`
-	QuoteName     string `json:"quote_name"`
-	QuoteTradeID  string `json:"quote_trade_id"`
+	BaseCurrencyID  int64          `json:"base_currency_id"`
+	QuoteCurrencyID int64          `json:"quote_currency_id"`
+	SortOrder       int64          `json:"sort_order"`
+	BaseItemPath    sql.NullString `json:"base_item_path"`
+	BaseName        sql.NullString `json:"base_name"`
+	BaseTradeID     sql.NullString `json:"base_trade_id"`
+	QuoteItemPath   sql.NullString `json:"quote_item_path"`
+	QuoteName       sql.NullString `json:"quote_name"`
+	QuoteTradeID    sql.NullString `json:"quote_trade_id"`
 }
 
 func (q *Queries) ListDefaultRatePairs(ctx context.Context) ([]ListDefaultRatePairsRow, error) {
@@ -44,6 +77,8 @@ func (q *Queries) ListDefaultRatePairs(ctx context.Context) ([]ListDefaultRatePa
 	for rows.Next() {
 		var i ListDefaultRatePairsRow
 		if err := rows.Scan(
+			&i.BaseCurrencyID,
+			&i.QuoteCurrencyID,
 			&i.SortOrder,
 			&i.BaseItemPath,
 			&i.BaseName,
@@ -63,4 +98,21 @@ func (q *Queries) ListDefaultRatePairs(ctx context.Context) ([]ListDefaultRatePa
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertDefaultRatePair = `-- name: UpsertDefaultRatePair :exec
+INSERT INTO default_rate_pairs (base_currency_id, quote_currency_id, sort_order)
+VALUES (?, ?, ?)
+ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order)
+`
+
+type UpsertDefaultRatePairParams struct {
+	BaseCurrencyID  int64 `json:"base_currency_id"`
+	QuoteCurrencyID int64 `json:"quote_currency_id"`
+	SortOrder       int64 `json:"sort_order"`
+}
+
+func (q *Queries) UpsertDefaultRatePair(ctx context.Context, arg UpsertDefaultRatePairParams) error {
+	_, err := q.db.ExecContext(ctx, upsertDefaultRatePair, arg.BaseCurrencyID, arg.QuoteCurrencyID, arg.SortOrder)
+	return err
 }

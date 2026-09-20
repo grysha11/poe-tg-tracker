@@ -33,7 +33,7 @@ type Config struct {
 	League        string
 	UserAgent     string
 	LogLevel      string
-	DBPath        string
+	DBDSN         string
 }
 
 func takeEnv(key string) (string, error) {
@@ -68,7 +68,7 @@ func LoadConfig() (Config, error) {
 		logLevel = "info"
 	}
 
-	dbPath, err := takeEnv("DB_PATH")
+	dbDSN, err := takeEnv("DB_DSN")
 	if err != nil {
 		return Config{}, err
 	}
@@ -78,6 +78,6 @@ func LoadConfig() (Config, error) {
 		League:        league,
 		UserAgent:     user,
 		LogLevel:      logLevel,
-		DBPath:        dbPath,
+		DBDSN:         dbDSN,
 	}, nil
 }

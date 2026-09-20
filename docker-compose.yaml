@@ -1,13 +1,31 @@
 services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: core
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./internal/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   bot:
     build: .
     image: poe-tg-tracker:latest
     env_file:
       - .env
     environment:
-      DB_PATH: /data/poetracker.db
-    volumes:
-      - poetracker-data:/data
+      DB_DSN: "root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4"
+    depends_on:
+      mysql:
+        condition: service_healthy
     restart: unless-stopped
 
   fetch-cron:
@@ -22,10 +40,9 @@ services:
       ofelia.job-run.fetch-hourly.schedule: "0 1 * * * *"
       ofelia.job-run.fetch-hourly.image: "poe-tg-tracker:latest"
       ofelia.job-run.fetch-hourly.pull: "false"
-      ofelia.job-run.fetch-hourly.command: "./fetcher -out /data/last_fetch.json"
-      ofelia.job-run.fetch-hourly.volume: "poetracker-data:/data"
-      ofelia.job-run.fetch-hourly.environment: '["POE_CONTACT=${POE_CONTACT}","FETCH_OUT_PATH=/data/last_fetch.json","DB_PATH=/data/poetracker.db","LOG_LEVEL=info"]'
+      ofelia.job-run.fetch-hourly.command: "./fetcher"
+      ofelia.job-run.fetch-hourly.environment: '["POE_CONTACT=${POE_CONTACT}","DB_DSN=root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4","LOG_LEVEL=info"]'
 
 volumes:
-  poetracker-data:
-    name: poetracker-data
+  mysql-data:
+    name: poetracker-mysql-data

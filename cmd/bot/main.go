@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -123,14 +124,28 @@ func loadDefaultRates(ctx context.Context, q *dbgen.Queries) (exchange.Currency,
 	return base, quotes, nil
 }
 
+func (a *App) isWhitelisted(userID int64) bool {
+	return slices.Contains(a.cfg.Whitelist, userID)
+}
+
 func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	if msg.From == nil || !a.isWhitelisted(msg.From.ID) {
+		var uid int64
+		if msg.From != nil {
+			uid = msg.From.ID
+		}
+		a.log.Warn("rejected message: user not whitelisted", "user_id", uid, "chat_id", msg.Chat.ID)
+		a.send(ctx, msg.Chat.ID, "You're not authorized to use this bot.", nil)
+		return
+	}
+
 	cmd, ok := telegram.Command(msg.Text)
 	if !ok {
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
 
 	switch cmd {
 	case "start", "help":
@@ -172,6 +187,16 @@ func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
 func (a *App) handleCallback(ctx context.Context, cb *telegram.CallbackQuery) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
+
+	if cb.From == nil || !a.isWhitelisted(cb.From.ID) {
+		var uid int64
+		if cb.From != nil {
+			uid = cb.From.ID
+		}
+		a.log.Warn("rejected callback: user not whitelisted", "user_id", uid)
+		_ = a.bot.AnswerCallbackQuery(ctx, cb.ID, "Not authorized")
+		return
+	}
 
 	prefix, view, hasView := strings.Cut(cb.Data, ":")
 	if prefix != "rates" || (view != "volume" && view != "price") || !hasView || cb.Message == nil {

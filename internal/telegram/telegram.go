@@ -28,14 +28,20 @@ type Chat struct {
 	ID int64 `json:"id"`
 }
 
+type User struct {
+	ID int64 `json:"id"`
+}
+
 type Message struct {
 	MessageID int64  `json:"message_id"`
 	Chat      Chat   `json:"chat"`
+	From      *User  `json:"from,omitempty"`
 	Text      string `json:"text"`
 }
 
 type CallbackQuery struct {
 	ID      string   `json:"id"`
+	From    *User    `json:"from,omitempty"`
 	Data    string   `json:"data"`
 	Message *Message `json:"message"`
 }

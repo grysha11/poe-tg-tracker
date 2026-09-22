@@ -1,0 +1,34 @@
+image:
+  repository: ghcr.io/grysha11/poe-tg-tracker
+  tag: bfcce3a332d9840b7461bfe0c1327cd907490512
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: ghcr-pull
+
+existingSecret: poe-tracker-secrets
+
+config:
+  POE_LEAGUE: "Forbidden Rites"
+  POE_CONTACT: "contact: zakharchenkoevhenii@gmail.com"
+  LOG_LEVEL: "info"
+
+fetchCron:
+  schedule: "1 * * * *"
+  backoffLimit: 3
+
+vtgate:
+  serviceName: vtgate
+  externalName: vitess-homelab-vtgate-43f81d05.vitess.svc.cluster.local
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+readinessProbe:
+  enabled: false
+  path: /healthz
+  port: 8080

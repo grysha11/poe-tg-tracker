@@ -1,0 +1,6 @@
+apiVersion: v2
+name: poe-tracker
+description: Telegram bot tracking Path of Exile 2 currency prices
+type: application
+
+version: 0.1.0

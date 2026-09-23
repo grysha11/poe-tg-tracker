@@ -15,6 +15,10 @@ fetchCron:
 vtgate:
   serviceName: vtgate
   externalName: vitess-homelab-vtgate-43f81d05.vitess.svc.cluster.local
+mysql:
+  enabled: false
+sealedSecrets:
+  enabled: true
 resources:
   requests:
     cpu: 50m

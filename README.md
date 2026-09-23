@@ -16,6 +16,39 @@ docker compose up --build
 
 Starts MySQL + the bot + hourly fetch-cron. MySQL data lives on the `poetracker-mysql-data` volume, schema loads automatically from `internal/db/schema.sql` on first boot.
 
+## Local Kubernetes testing (minikube)
+
+For testing against the real Helm chart without needing the homelab (useful
+when it's unreachable, e.g. VPS provider issues). Deploys the chart into a
+local minikube cluster, backed by a disposable in-cluster MySQL instead of
+the homelab's Vitess vtgate.
+
+Requires `minikube`, `kubectl`, `helm`, `docker`, and [`task`](https://taskfile.dev)
+on your `PATH`, plus a filled-in `.env` (same one docker-compose uses).
+
+```
+task dev:up        # start minikube, build the image, load it, helm install
+task dev:bootstrap # seed the DB (curate sync + bootstrap) — needed after every fresh dev:up
+task dev:fetch-once # optional: pull one hour of real rate data immediately, instead of waiting for the cron
+task dev:smoke     # wait for rollout, sanity-check both Deployments are healthy
+task dev:logs      # tail the bot's logs
+task dev:watch     # rebuild + redeploy automatically on Go source changes
+task dev:down      # remove the release, keep the cluster running
+task dev:destroy   # tear down the release and the minikube cluster
+```
+
+`task dev:bootstrap` is required after every fresh `dev:up`, not just the
+first one — the in-cluster MySQL's data is an ephemeral `emptyDir` that's
+wiped whenever its pod is recreated (e.g. by `dev:down`), same as the "First
+run bootstrap" requirement above applies to a fresh prod DB.
+
+Runs in its own `poe-tracker-dev` namespace and `poetracker` minikube
+profile, isolated from anything else on the machine. Uses
+`deploy/poe-tracker/values.dev.yaml` (in-cluster MySQL, `pullPolicy: Never`,
+no SealedSecrets, a plain Secret rebuilt from `.env` by `task secrets:dev`)
+and never touches the homelab or GHCR. See `Taskfile.yml` for the full task
+list.
+
 ## Fetcher (manual run)
 
 Normally runs on cron. To trigger a fetch now instead of waiting:

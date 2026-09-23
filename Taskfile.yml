@@ -1,0 +1,155 @@
+version: '3'
+
+vars:
+  PROFILE: poetracker
+  NAMESPACE: poe-tracker-dev
+  RELEASE: poe-tracker-dev
+  CHART: ./deploy/poe-tracker
+  IMAGE: poe-tg-tracker
+  TAG: dev
+  DEV_SECRET: poe-tracker-secrets-dev
+  MYSQL_SCHEMA_CM: "{{.RELEASE}}-mysql-schema"
+
+tasks:
+  minikube:start:
+    desc: Start (or reuse) the local minikube cluster
+    status:
+      - minikube status -p {{.PROFILE}} >/dev/null 2>&1
+    cmds:
+      - minikube start -p {{.PROFILE}} --driver=docker --cpus=4 --memory=4096
+
+  minikube:stop:
+    desc: Stop the cluster without deleting it
+    cmds:
+      - minikube stop -p {{.PROFILE}}
+
+  docker:build:
+    desc: Build the shared multi-binary image
+    sources:
+      - go.mod
+      - go.sum
+      - cmd/**/*.go
+      - internal/**/*.go
+      - Dockerfile
+    cmds:
+      - docker build -t {{.IMAGE}}:{{.TAG}} .
+
+  minikube:load:
+    desc: Load the freshly built image into the minikube node (no registry needed)
+    deps: [docker:build]
+    cmds:
+      - minikube image load {{.IMAGE}}:{{.TAG}} -p {{.PROFILE}}
+
+  secrets:dev:
+    desc: Create/refresh the plain dev Secret from .env (never a SealedSecret locally)
+    preconditions:
+      - sh: test -f .env
+        msg: "missing .env — copy .env.example and fill it in first"
+    vars:
+      MYSQL_ROOT_PASSWORD:
+        sh: grep -m1 '^MYSQL_ROOT_PASSWORD=' .env | cut -d= -f2-
+      TELGRAM_BOT_TOKEN:
+        sh: grep -m1 '^TELGRAM_BOT_TOKEN=' .env | cut -d= -f2-
+      WHITELIST:
+        sh: grep -m1 '^WHITELIST=' .env | cut -d= -f2-
+    cmds:
+      - kubectl create namespace {{.NAMESPACE}} --dry-run=client -o yaml | kubectl apply -f -
+      - |
+        kubectl -n {{.NAMESPACE}} create secret generic {{.DEV_SECRET}} \
+          --from-literal=TELGRAM_BOT_TOKEN='{{.TELGRAM_BOT_TOKEN}}' \
+          --from-literal=WHITELIST='{{.WHITELIST}}' \
+          --from-literal=MYSQL_ROOT_PASSWORD='{{.MYSQL_ROOT_PASSWORD}}' \
+          --from-literal=DB_DSN='root:{{.MYSQL_ROOT_PASSWORD}}@tcp({{.RELEASE}}-mysql:3306)/core?parseTime=false&charset=utf8mb4' \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+  db:schema-configmap:
+    desc: Sync the schema.sql ConfigMap the dev MySQL pod bootstraps from
+    sources:
+      - internal/db/schema.sql
+    cmds:
+      - kubectl create namespace {{.NAMESPACE}} --dry-run=client -o yaml | kubectl apply -f -
+      - |
+        kubectl -n {{.NAMESPACE}} create configmap {{.MYSQL_SCHEMA_CM}} \
+          --from-file=schema.sql=internal/db/schema.sql \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+  dev:bootstrap:
+    desc: Seed the dev DB (curate sync + bootstrap) — needed after every fresh dev:up, mysql's data is ephemeral (emptyDir) and doesn't survive dev:down
+    cmds:
+      - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-mysql --timeout=120s
+      - |
+        kubectl -n {{.NAMESPACE}} run curate-bootstrap --rm -i --restart=Never \
+          --image={{.IMAGE}}:{{.TAG}} --image-pull-policy=Never \
+          --overrides='{"spec":{"containers":[{"name":"curate","image":"{{.IMAGE}}:{{.TAG}}","imagePullPolicy":"Never","command":["sh","-c","./curate sync && ./curate bootstrap"],"envFrom":[{"configMapRef":{"name":"{{.RELEASE}}-config"}},{"secretRef":{"name":"{{.DEV_SECRET}}"}}]}]}}'
+      - kubectl -n {{.NAMESPACE}} rollout restart deploy/{{.RELEASE}}
+      - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}} --timeout=60s
+
+  dev:fetch-once:
+    desc: Trigger a single manual fetcher run against the dev DB (same as prod's hourly cron)
+    cmds:
+      - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-mysql --timeout=120s
+      - |
+        kubectl -n {{.NAMESPACE}} run fetch-once --rm -i --restart=Never \
+          --image={{.IMAGE}}:{{.TAG}} --image-pull-policy=Never \
+          --overrides='{"spec":{"containers":[{"name":"fetcher","image":"{{.IMAGE}}:{{.TAG}}","imagePullPolicy":"Never","command":["./fetcher"],"envFrom":[{"configMapRef":{"name":"{{.RELEASE}}-config"}},{"secretRef":{"name":"{{.DEV_SECRET}}"}}]}]}}'
+
+  helm:dev-install:
+    desc: helm upgrade --install against minikube with dev overrides
+    deps: [minikube:load, secrets:dev, db:schema-configmap]
+    cmds:
+      - |
+        helm upgrade --install {{.RELEASE}} {{.CHART}} \
+          --namespace {{.NAMESPACE}} --create-namespace \
+          -f {{.CHART}}/values.yaml \
+          -f {{.CHART}}/values.dev.yaml \
+          --set image.repository={{.IMAGE}} \
+          --set image.tag={{.TAG}} \
+          --set existingSecret={{.DEV_SECRET}}
+
+  dev:up:
+    desc: Full inner loop — start cluster, build, load, deploy
+    cmds:
+      - task: minikube:start
+      - task: helm:dev-install
+
+  dev:watch:
+    desc: Rebuild and redeploy whenever Go source changes
+    watch: true
+    sources:
+      - cmd/**/*.go
+      - internal/**/*.go
+    cmds:
+      - task: helm:dev-install
+
+  dev:smoke:
+    desc: Wait for rollout and confirm the deployment came up healthy
+    deps: [helm:dev-install]
+    cmds:
+      - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-mysql --timeout=120s
+      - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}} --timeout=90s
+
+  dev:mysql-forward:
+    desc: Port-forward the dev MySQL to localhost:3307 for inspection
+    cmds:
+      - kubectl -n {{.NAMESPACE}} port-forward svc/{{.RELEASE}}-mysql 3307:3306
+
+  dev:logs:
+    desc: Tail the bot's logs
+    cmds:
+      - kubectl -n {{.NAMESPACE}} logs -f deploy/{{.RELEASE}}
+
+  dev:down:
+    desc: Remove the dev release (keeps the cluster running)
+    cmds:
+      - helm uninstall {{.RELEASE}} --namespace {{.NAMESPACE}} || true
+
+  dev:destroy:
+    desc: Full teardown, including the minikube cluster
+    cmds:
+      - task: dev:down
+      - minikube delete -p {{.PROFILE}}
+
+  test:
+    desc: Run the Go test suite (needs TEST_DB_DSN — see README)
+    cmds:
+      - go test ./...

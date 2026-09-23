@@ -1,0 +1,16 @@
+image:
+  pullPolicy: Never
+imagePullSecrets: []
+existingSecret: poe-tracker-secrets-dev
+mysql:
+  enabled: true
+sealedSecrets:
+  enabled: false
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+readinessProbe:
+  enabled: false

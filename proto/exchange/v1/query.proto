@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package exchange.v1;
+
+option go_package = "github.com/grysha11/poe-tg-tracker/internal/pb/exchangev1;exchangev1";
+
+import "google/api/annotations.proto";
+
+service ExchangeQueryService {
+  rpc GetRates(GetRatesRequest) returns (GetRatesResponse) {
+    option (google.api.http) = {
+      get: "/v1/rates"
+    };
+  }
+
+  rpc ListLeagues(ListLeaguesRequest) returns (ListLeaguesResponse) {
+    option (google.api.http) = {
+      get: "/v1/leagues"
+    };
+  }
+
+  rpc ListDefaultRatePairs(ListDefaultRatePairsRequest) returns (ListDefaultRatePairsResponse) {
+    option (google.api.http) = {
+      get: "/v1/rate-pairs/default"
+    };
+  }
+}
+
+enum RateView {
+  RATE_VIEW_UNSPECIFIED = 0;
+  RATE_VIEW_VOLUME = 1;
+  RATE_VIEW_PRICE = 2;
+}
+
+message CurrencyRef {
+  string item_path = 1;
+  string name = 2;
+  string trade_id = 3;
+}
+
+message GetRatesRequest {
+  string league = 1;
+  RateView view = 2;
+  int32 limit = 3;
+}
+
+message RankedRate {
+  CurrencyRef currency = 1;
+  double vwap = 2;
+  double low = 3;
+  double high = 4;
+  uint64 base_volume = 5;
+  uint64 quote_volume = 6;
+  CurrencyRef via = 7;
+}
+
+message GetRatesResponse {
+  CurrencyRef base = 1;
+  repeated RankedRate rates = 2;
+  int64 hour_utc = 3;
+  string league = 4;
+}
+
+message ListLeaguesRequest {
+  int64 hour_utc = 1;
+}
+
+message ListLeaguesResponse {
+  repeated string leagues = 1;
+}
+
+message ListDefaultRatePairsRequest {}
+
+message DefaultRatePair {
+  CurrencyRef base = 1;
+  CurrencyRef quote = 2;
+  int32 sort_order = 3;
+}
+
+message ListDefaultRatePairsResponse {
+  repeated DefaultRatePair pairs = 1;
+}

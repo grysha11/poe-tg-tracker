@@ -1,0 +1,11 @@
+version: v2
+plugins:
+  - local: ../.tools/protoc-gen-go
+    out: ..
+    opt: module=github.com/grysha11/poe-tg-tracker
+  - local: ../.tools/protoc-gen-go-grpc
+    out: ..
+    opt: module=github.com/grysha11/poe-tg-tracker
+  - local: ../.tools/protoc-gen-grpc-gateway
+    out: ..
+    opt: module=github.com/grysha11/poe-tg-tracker

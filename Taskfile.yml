@@ -153,3 +153,32 @@ tasks:
     desc: Run the Go test suite (needs TEST_DB_DSN — see README)
     cmds:
       - go test ./...
+
+  tools:proto:
+    desc: Build the pinned protobuf codegen plugins (go.mod tool deps) into .tools/
+    sources:
+      - go.mod
+      - go.sum
+    generates:
+      - .tools/protoc-gen-go
+      - .tools/protoc-gen-go-grpc
+      - .tools/protoc-gen-grpc-gateway
+    cmds:
+      - mkdir -p .tools
+      - |
+        GOBIN={{.ROOT_DIR}}/.tools go install \
+          google.golang.org/protobuf/cmd/protoc-gen-go \
+          google.golang.org/grpc/cmd/protoc-gen-go-grpc \
+          github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
+
+  proto:gen:
+    desc: Regenerate Go stubs from proto/*.proto (needs buf — pacman -S buf)
+    deps: [tools:proto]
+    dir: proto
+    sources:
+      - "**/*.proto"
+    generates:
+      - ../internal/pb/exchangev1/*.go
+    cmds:
+      - buf generate
+      - cd .. && go mod tidy

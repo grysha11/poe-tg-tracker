@@ -8,3 +8,4 @@ main
 *.db-wal
 *.db-shm
 .task/
+.tools/

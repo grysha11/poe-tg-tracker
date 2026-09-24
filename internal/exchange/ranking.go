@@ -3,14 +3,7 @@ package exchange
 import (
 	"maps"
 	"sort"
-	"strings"
 )
-
-const currencyPathPrefix = "Metadata/Items/Currency/"
-
-func IsCurrency(itemPath string) bool {
-	return strings.HasPrefix(itemPath, currencyPathPrefix)
-}
 
 func currencyRatesFrom(rows []SnapshotRow, base Currency) map[string]CurrencyRate {
 	out := map[string]CurrencyRate{}
@@ -29,9 +22,6 @@ func currencyRatesFrom(rows []SnapshotRow, base Currency) map[string]CurrencyRat
 			baseLow, quoteLow = row.LowestRatioB, row.LowestRatioA
 			baseHigh, quoteHigh = row.HighestRatioB, row.HighestRatioA
 		default:
-			continue
-		}
-		if !IsCurrency(quote.ID) {
 			continue
 		}
 		if rate, ok := computeRate(quote.ID, baseVol, quoteVol, baseLow, quoteLow, baseHigh, quoteHigh); ok {

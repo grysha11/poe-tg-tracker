@@ -9,6 +9,7 @@ vars:
   TAG: dev
   DEV_SECRET: poe-tracker-secrets-dev
   MYSQL_SCHEMA_CM: "{{.RELEASE}}-mysql-schema"
+  APP_DEPLOYS: "deploy/{{.RELEASE}} deploy/{{.RELEASE}}-exchange-service"
 
 tasks:
   minikube:start:
@@ -70,8 +71,6 @@ tasks:
 
   db:schema-configmap:
     desc: Sync the schema.sql ConfigMap the dev MySQL pod bootstraps from
-    sources:
-      - internal/db/schema.sql
     deps: [namespace]
     cmds:
       - |
@@ -111,6 +110,10 @@ tasks:
           --set image.repository={{.IMAGE}} \
           --set image.tag={{.TAG}} \
           --set existingSecret={{.DEV_SECRET}}
+      # The tag is always "dev", so helm sees an unchanged pod spec and never
+      # rolls the pods onto the freshly loaded image. Restart the app
+      # deployments explicitly — never mysql, its emptyDir data would be lost.
+      - kubectl -n {{.NAMESPACE}} rollout restart {{.APP_DEPLOYS}}
 
   dev:up:
     desc: Full inner loop — start cluster, build, load, deploy

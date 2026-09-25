@@ -25,13 +25,16 @@ func TestRankByVolume(t *testing.T) {
 		{ItemA: divine, ItemB: gem, VolumeA: 100, VolumeB: 5},
 	}
 
-	t.Run("ranks by base volume descending", func(t *testing.T) {
+	t.Run("ranks by base volume descending, non-currency items included", func(t *testing.T) {
 		got := RankByVolume(rows, divine, 10)
-		if len(got) != 2 {
-			t.Fatalf("len(got) = %d, want 2 (exalt, chaos only): %+v", len(got), got)
+		want := []string{"gem", "exalted", "chaos"}
+		if len(got) != len(want) {
+			t.Fatalf("len(got) = %d, want %d (zero-volume mirror excluded): %+v", len(got), len(want), got)
 		}
-		if got[0].Currency.TradeID != "exalted" || got[1].Currency.TradeID != "chaos" {
-			t.Fatalf("order = [%s, %s], want [exalted, chaos] (30 vol > 10 vol)", got[0].Currency.TradeID, got[1].Currency.TradeID)
+		for i := range want {
+			if got[i].Currency.TradeID != want[i] {
+				t.Fatalf("got[%d] = %s, want %s (order by base volume 100 > 30 > 10)", i, got[i].Currency.TradeID, want[i])
+			}
 		}
 	})
 
@@ -40,8 +43,8 @@ func TestRankByVolume(t *testing.T) {
 		if len(got) != 1 {
 			t.Fatalf("len(got) = %d, want 1", len(got))
 		}
-		if got[0].Currency.TradeID != "exalted" {
-			t.Fatalf("got[0] = %s, want exalted (highest volume)", got[0].Currency.TradeID)
+		if got[0].Currency.TradeID != "gem" {
+			t.Fatalf("got[0] = %s, want gem (highest volume)", got[0].Currency.TradeID)
 		}
 	})
 

@@ -14,11 +14,12 @@ ON DUPLICATE KEY UPDATE
     updated_at     = VALUES(updated_at);
 
 -- name: UpsertCurrencySynced :exec
-INSERT INTO currencies (item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at)
-VALUES (?, ?, ?, NULL, 0, ?, ?)
+INSERT INTO currencies (item_path, trade_id, name, emoji_id, category, is_placeholder, discovered_at, updated_at)
+VALUES (?, ?, ?, NULL, ?, 0, ?, ?)
 ON DUPLICATE KEY UPDATE
     trade_id       = VALUES(trade_id),
     name           = VALUES(name),
+    category       = VALUES(category),
     is_placeholder = 0,
     updated_at     = VALUES(updated_at);
 

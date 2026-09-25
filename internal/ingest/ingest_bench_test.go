@@ -19,7 +19,11 @@ func newBenchDB(tb testing.TB) *db.DB {
 	tb.Helper()
 	dsn := os.Getenv("TEST_DB_DSN")
 	if dsn == "" {
-		tb.Fatal("TEST_DB_DSN env required (e.g. run: docker compose up -d mysql)")
+		tb.Fatal("TEST_DB_DSN env required (see README: Tests)")
+	}
+
+	if _, _, err := db.Migrate(context.Background(), dsn); err != nil {
+		tb.Fatalf("migrate: %v", err)
 	}
 
 	dbase, err := db.Open(dsn)

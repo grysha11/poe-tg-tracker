@@ -8,7 +8,6 @@ vars:
   IMAGE: poe-tg-tracker
   TAG: dev
   DEV_SECRET: poe-tracker-secrets-dev
-  MYSQL_SCHEMA_CM: "{{.RELEASE}}-mysql-schema"
 
 tasks:
   minikube:start:
@@ -68,25 +67,14 @@ tasks:
           --from-literal=DB_DSN='root:{{.MYSQL_ROOT_PASSWORD}}@tcp({{.RELEASE}}-mysql:3306)/core?parseTime=false&charset=utf8mb4' \
           --dry-run=client -o yaml | kubectl apply -f -
 
-  db:schema-configmap:
-    desc: Sync the schema.sql ConfigMap the dev MySQL pod bootstraps from
-    sources:
-      - internal/db/schema.sql
-    deps: [namespace]
-    cmds:
-      - |
-        kubectl -n {{.NAMESPACE}} create configmap {{.MYSQL_SCHEMA_CM}} \
-          --from-file=schema.sql=internal/db/schema.sql \
-          --dry-run=client -o yaml | kubectl apply -f -
-
   dev:bootstrap:
-    desc: Seed the dev DB (curate sync + bootstrap) — needed after every fresh dev:up, mysql's data is ephemeral (emptyDir) and doesn't survive dev:down
+    desc: Migrate and seed the dev DB (migrate + curate sync + bootstrap) — needed after every fresh dev:up, mysql's data is ephemeral (emptyDir) and doesn't survive dev:down
     cmds:
       - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-mysql --timeout=120s
       - |
         kubectl -n {{.NAMESPACE}} run curate-bootstrap --rm -i --restart=Never \
           --image={{.IMAGE}}:{{.TAG}} --image-pull-policy=Never \
-          --overrides='{"spec":{"containers":[{"name":"curate","image":"{{.IMAGE}}:{{.TAG}}","imagePullPolicy":"Never","command":["sh","-c","./curate sync && ./curate bootstrap"],"envFrom":[{"configMapRef":{"name":"{{.RELEASE}}-config"}},{"secretRef":{"name":"{{.DEV_SECRET}}"}}]}]}}'
+          --overrides='{"spec":{"containers":[{"name":"curate","image":"{{.IMAGE}}:{{.TAG}}","imagePullPolicy":"Never","command":["sh","-c","./migrate && ./curate sync && ./curate bootstrap"],"envFrom":[{"configMapRef":{"name":"{{.RELEASE}}-config"}},{"secretRef":{"name":"{{.DEV_SECRET}}"}}]}]}}'
       - kubectl -n {{.NAMESPACE}} rollout restart deploy/{{.RELEASE}}
       - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}} --timeout=60s
 
@@ -101,7 +89,7 @@ tasks:
 
   helm:dev-install:
     desc: helm upgrade --install against minikube with dev overrides
-    deps: [minikube:load, secrets:dev, db:schema-configmap]
+    deps: [minikube:load, secrets:dev]
     cmds:
       - |
         helm upgrade --install {{.RELEASE}} {{.CHART}} \

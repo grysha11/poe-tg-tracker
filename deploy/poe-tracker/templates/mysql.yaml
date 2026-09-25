@@ -40,15 +40,9 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
-            - name: schema
-              mountPath: /docker-entrypoint-initdb.d
-              readOnly: true
       volumes:
         - name: data
           emptyDir: {}
-        - name: schema
-          configMap:
-            name: {{ include "poe-tracker.fullname" . }}-mysql-schema
 ---
 apiVersion: v1
 kind: Service

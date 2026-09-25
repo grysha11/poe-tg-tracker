@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
 	"github.com/grysha11/poe-tg-tracker/internal/ingest"
 )
 
@@ -36,6 +37,43 @@ func TestRun_NoOrphanCurrencies(t *testing.T) {
 	}
 	if pairOrphans != 0 {
 		t.Errorf("default_rate_pairs has %d rows with a missing currency", pairOrphans)
+	}
+}
+
+func TestResolveReadBack_SeesCurrencyCommittedAfterSnapshot(t *testing.T) {
+	dbase := newBenchDB(t)
+	ctx := context.Background()
+	path := "Metadata/Items/Currency/CommittedConcurrently"
+
+	tx, err := dbase.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	q := dbase.Q.WithTx(tx)
+
+	if _, err := q.ListCurrencies(ctx); err != nil {
+		t.Fatalf("establish snapshot: %v", err)
+	}
+
+	if err := dbase.Q.UpsertCurrencySynced(ctx, dbgen.UpsertCurrencySyncedParams{
+		ItemPath: path, TradeID: "concurrent", Name: "Concurrent",
+	}); err != nil {
+		t.Fatalf("concurrent sync upsert: %v", err)
+	}
+
+	if err := q.UpsertCurrencyPlaceholder(ctx, dbgen.UpsertCurrencyPlaceholderParams{
+		ItemPath: path, TradeID: "placeholder", Name: "placeholder",
+	}); err != nil {
+		t.Fatalf("placeholder upsert: %v", err)
+	}
+
+	c, err := q.GetCurrencyByPathForUpdate(ctx, path)
+	if err != nil {
+		t.Fatalf("read back after upsert: %v", err)
+	}
+	if c.TradeID != "concurrent" {
+		t.Errorf("trade_id = %q, want the concurrently committed %q", c.TradeID, "concurrent")
 	}
 }
 

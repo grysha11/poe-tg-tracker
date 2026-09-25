@@ -30,6 +30,26 @@ func (q *Queries) GetCurrencyByPath(ctx context.Context, itemPath string) (Curre
 	return i, err
 }
 
+const getCurrencyByPathForUpdate = `-- name: GetCurrencyByPathForUpdate :one
+SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies WHERE item_path = ? FOR UPDATE
+`
+
+func (q *Queries) GetCurrencyByPathForUpdate(ctx context.Context, itemPath string) (Currency, error) {
+	row := q.db.QueryRowContext(ctx, getCurrencyByPathForUpdate, itemPath)
+	var i Currency
+	err := row.Scan(
+		&i.CurrencyID,
+		&i.ItemPath,
+		&i.TradeID,
+		&i.Name,
+		&i.EmojiID,
+		&i.IsPlaceholder,
+		&i.DiscoveredAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listCurrencies = `-- name: ListCurrencies :many
 SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies ORDER BY name
 `

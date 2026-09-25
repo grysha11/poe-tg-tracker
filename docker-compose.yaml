@@ -23,6 +23,22 @@ services:
       - .env
     environment:
       DB_DSN: "root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4"
+      EXCHANGE_SERVICE_ADDR: "exchange-service:9090"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      exchange-service:
+        condition: service_started
+    restart: unless-stopped
+
+  exchange-service:
+    build: .
+    image: poe-tg-tracker:latest
+    command: ["./exchange-service"]
+    env_file:
+      - .env
+    environment:
+      DB_DSN: "root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4"
     depends_on:
       mysql:
         condition: service_healthy

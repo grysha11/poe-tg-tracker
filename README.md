@@ -6,7 +6,9 @@ cp .env.example .env   # fill in TELGRAM_BOT_TOKEN, POE_LEAGUE, POE_CONTACT, MYS
 
 `WHITELIST` is a required comma-separated list of Telegram user IDs (`123,456`); the bot won't start without it and rejects everyone else. To onboard someone: have them message the bot, copy their `user_id` from the `rejected message: user not whitelisted` log line, add it to `WHITELIST` and restart.
 
-`DB_DSN` is auto-set for the `bot`/`fetch-cron` containers from `MYSQL_ROOT_PASSWORD`. Only fill it in `.env` yourself if running a binary directly on the host (see below) — use `127.0.0.1:3306` there instead of `mysql:3306`.
+`DB_DSN` is auto-set for the `bot`/`exchange-service`/`fetch-cron` containers from `MYSQL_ROOT_PASSWORD`. Only fill it in `.env` yourself if running a binary directly on the host (see below) — use `127.0.0.1:3306` there instead of `mysql:3306`.
+
+`curate` doesn't touch the DB: it calls exchange-service's admin gRPC API at `EXCHANGE_SERVICE_ADDR` (auto-set to `exchange-service:9090` in the `bot` container).
 
 ## Run
 
@@ -61,7 +63,7 @@ Flag: `-hour <unix_ts>` to backfill a specific hour. Stale-payload detection (th
 
 ## Curate
 
-Manages currency names in the DB (raw API only gives internal item paths, not display names).
+Manages currency names (raw API only gives internal item paths, not display names) through exchange-service's admin API.
 
 ```
 docker compose exec bot ./curate list
@@ -70,7 +72,7 @@ docker compose exec bot ./curate set -path <item_path> -trade-id <id> -name <nam
 
 ### Sync from poe2scout
 
-Bulk-upserts real names for all known currencies straight into the DB. Safe to re-run; won't touch emoji ids you've already curated:
+Bulk-upserts real names for all known currencies. Safe to re-run; won't touch emoji ids you've already curated:
 
 ```
 docker compose exec bot ./curate sync

@@ -70,6 +70,7 @@ tasks:
     desc: Seed the dev DB (curate sync + bootstrap) — needed after every fresh dev:up, mysql's data is ephemeral (emptyDir) and doesn't survive dev:down
     cmds:
       - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-mysql --timeout=120s
+      - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-exchange-service --timeout=120s
       - |
         kubectl -n {{.NAMESPACE}} run curate-bootstrap --rm -i --restart=Never \
           --image={{.IMAGE}}:{{.TAG}} --image-pull-policy=Never \

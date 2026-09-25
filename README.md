@@ -34,6 +34,7 @@ task dev:bootstrap # seed the DB (curate sync + bootstrap) — needed after ever
 task dev:fetch-once # optional: pull one hour of real rate data immediately, instead of waiting for the cron
 task dev:smoke     # wait for rollout, sanity-check both Deployments are healthy
 task dev:logs      # tail the bot's logs
+task dev:gateway-forward # expose the gateway on localhost:8080
 task dev:watch     # rebuild + redeploy automatically on Go source changes
 task dev:down      # remove the release, keep the cluster running
 task dev:destroy   # tear down the release and the minikube cluster
@@ -50,6 +51,22 @@ profile, isolated from anything else on the machine. Uses
 no SealedSecrets, a plain Secret rebuilt from `.env` by `task secrets:dev`)
 and never touches the homelab or GHCR. See `Taskfile.yml` for the full task
 list.
+
+## Gateway (REST API)
+
+`gateway` is the REST/JSON front door for clients (bot today; Discord bot, website, desktop app later). It proxies to exchange-service over gRPC via grpc-gateway, generated from `proto/exchange/v1/query.proto`:
+
+```
+GET /v1/rates?league=<league>&view=RATE_VIEW_VOLUME|RATE_VIEW_PRICE&limit=<n>
+GET /v1/leagues
+GET /v1/rate-pairs/default
+GET /healthz   # liveness
+GET /readyz    # readiness: exchange-service's gRPC health
+```
+
+All params are optional (league defaults to `POE_LEAGUE`, view to volume, limit to 10). 64-bit ints (`hourUtc`, `baseVolume`, …) are JSON strings, per protojson. Admin RPCs (what `curate` uses) are deliberately not exposed here.
+
+No auth yet: the Service is ClusterIP-only and compose binds it to `127.0.0.1`. Add auth before exposing it to anything outside the cluster.
 
 ## Fetcher (manual run)
 

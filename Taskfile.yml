@@ -9,7 +9,7 @@ vars:
   TAG: dev
   DEV_SECRET: poe-tracker-secrets-dev
   MYSQL_SCHEMA_CM: "{{.RELEASE}}-mysql-schema"
-  APP_DEPLOYS: "deploy/{{.RELEASE}} deploy/{{.RELEASE}}-exchange-service"
+  APP_DEPLOYS: "deploy/{{.RELEASE}} deploy/{{.RELEASE}}-exchange-service deploy/{{.RELEASE}}-gateway"
 
 tasks:
   minikube:start:
@@ -122,6 +122,11 @@ tasks:
     cmds:
       - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-mysql --timeout=120s
       - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}} --timeout=90s
+
+  dev:gateway-forward:
+    desc: Port-forward the dev gateway to localhost:8080 (e.g. curl localhost:8080/v1/rates)
+    cmds:
+      - kubectl -n {{.NAMESPACE}} port-forward svc/{{.RELEASE}}-gateway 8080:8080
 
   dev:mysql-forward:
     desc: Port-forward the dev MySQL to localhost:3307 for inspection

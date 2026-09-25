@@ -89,7 +89,16 @@ docker compose run --rm bot ./curate bootstrap
 
 ## Tests
 
-Tests truncate all tables before each run — never point `TEST_DB_DSN` at the `mysql` service from `docker compose up` (that's your real dev data). Use a separate, disposable container:
+Tests truncate all tables before each run — never point `TEST_DB_DSN` at the `mysql` service from `docker compose up` or the minikube dev MySQL (that's your real dev data). Easiest:
+
+```
+task test:db       # starts a disposable mysql:8.4 on :3307 if needed, runs go test -p 1 ./...
+task test:db-down  # stop and remove it
+```
+
+`-p 1` matters: every DB-backed package truncates the same test DB, so packages can't run concurrently.
+
+Or by hand, with a separate, disposable container:
 
 ```
 docker run -d --rm --name poe-mysql-test -p 3307:3306 \
@@ -98,7 +107,7 @@ docker run -d --rm --name poe-mysql-test -p 3307:3306 \
   mysql:8.4
 
 export TEST_DB_DSN="root:test@tcp(127.0.0.1:3307)/core?parseTime=false&charset=utf8mb4"
-go test ./...
+go test -p 1 ./...
 
 docker stop poe-mysql-test   # when done
 ```

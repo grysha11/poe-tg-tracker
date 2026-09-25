@@ -150,9 +150,36 @@ tasks:
       - minikube delete -p {{.PROFILE}}
 
   test:
-    desc: Run the Go test suite (needs TEST_DB_DSN — see README)
+    desc: Run the Go test suite (needs TEST_DB_DSN — see README, or use test:db)
     cmds:
-      - go test ./...
+      - go test -p 1 ./...
+
+  test:db-up:
+    desc: Start the disposable test MySQL on :3307 (tests TRUNCATE everything — never point them at real data)
+    status:
+      - docker inspect -f '{{`{{.State.Running}}`}}' poe-mysql-test 2>/dev/null | grep -q true
+    cmds:
+      - |
+        docker run -d --rm --name poe-mysql-test -p 3307:3306 \
+          -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=core \
+          -v "{{.ROOT_DIR}}/internal/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro" \
+          mysql:8.4
+      - until docker exec poe-mysql-test mysql -h127.0.0.1 -uroot -ptest -e 'SELECT 1 FROM core.currencies LIMIT 1' >/dev/null 2>&1; do sleep 1; done
+
+  test:db-down:
+    desc: Stop (and remove) the disposable test MySQL
+    cmds:
+      - docker stop poe-mysql-test || true
+
+  test:db:
+    desc: Run the Go test suite against the disposable test MySQL
+    deps: [test:db-up]
+    env:
+      TEST_DB_DSN: "root:test@tcp(127.0.0.1:3307)/core?parseTime=false&charset=utf8mb4"
+    cmds:
+      # -p 1: every DB-backed package TRUNCATEs the same shared test DB, so
+      # packages must not run concurrently.
+      - go test -p 1 ./...
 
   tools:proto:
     desc: Build the pinned protobuf codegen plugins (go.mod tool deps) into .tools/

@@ -19,6 +19,10 @@ mysql:
   enabled: false
 sealedSecrets:
   enabled: true
+exchangeService:
+  enabled: true
+  replicas: 1
+  port: 9090
 resources:
   requests:
     cpu: 50m

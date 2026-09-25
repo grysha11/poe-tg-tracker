@@ -40,6 +40,12 @@ tasks:
     cmds:
       - minikube image load {{.IMAGE}}:{{.TAG}} -p {{.PROFILE}}
 
+  namespace:
+    desc: Create the dev namespace (single task, run once, so parallel deps don't race to create it)
+    run: once
+    cmds:
+      - kubectl create namespace {{.NAMESPACE}} --dry-run=client -o yaml | kubectl apply -f -
+
   secrets:dev:
     desc: Create/refresh the plain dev Secret from .env (never a SealedSecret locally)
     preconditions:
@@ -52,8 +58,8 @@ tasks:
         sh: grep -m1 '^TELGRAM_BOT_TOKEN=' .env | cut -d= -f2-
       WHITELIST:
         sh: grep -m1 '^WHITELIST=' .env | cut -d= -f2-
+    deps: [namespace]
     cmds:
-      - kubectl create namespace {{.NAMESPACE}} --dry-run=client -o yaml | kubectl apply -f -
       - |
         kubectl -n {{.NAMESPACE}} create secret generic {{.DEV_SECRET}} \
           --from-literal=TELGRAM_BOT_TOKEN='{{.TELGRAM_BOT_TOKEN}}' \
@@ -66,8 +72,8 @@ tasks:
     desc: Sync the schema.sql ConfigMap the dev MySQL pod bootstraps from
     sources:
       - internal/db/schema.sql
+    deps: [namespace]
     cmds:
-      - kubectl create namespace {{.NAMESPACE}} --dry-run=client -o yaml | kubectl apply -f -
       - |
         kubectl -n {{.NAMESPACE}} create configmap {{.MYSQL_SCHEMA_CM}} \
           --from-file=schema.sql=internal/db/schema.sql \

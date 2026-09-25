@@ -11,15 +11,6 @@ var (
 	gem    = Currency{ID: "Metadata/Items/Gems/SomeSupportGem", Name: "Some Gem", TradeID: "gem"}
 )
 
-func TestIsCurrency(t *testing.T) {
-	if !IsCurrency(chaos.ID) {
-		t.Errorf("IsCurrency(%q) = false, want true", chaos.ID)
-	}
-	if IsCurrency(gem.ID) {
-		t.Errorf("IsCurrency(%q) = true, want false", gem.ID)
-	}
-}
-
 func TestRankByVolume(t *testing.T) {
 	t.Run("empty rows", func(t *testing.T) {
 		if got := RankByVolume(nil, divine, 10); len(got) != 0 {

@@ -157,7 +157,7 @@ func runSync(ctx context.Context, dbase *db.DB, args []string) {
 		os.Exit(1)
 	}
 
-	type row struct{ path, tradeID, name string }
+	type row struct{ path, tradeID, name, category string }
 	seen := make(map[string]bool, len(items))
 	var rows []row
 	skipped := 0
@@ -171,7 +171,7 @@ func runSync(ctx context.Context, dbase *db.DB, args []string) {
 			continue
 		}
 		seen[path] = true
-		rows = append(rows, row{path: path, tradeID: item.ApiId, name: item.Text})
+		rows = append(rows, row{path: path, tradeID: item.ApiId, name: item.Text, category: item.CategoryApiId})
 	}
 	if len(rows) == 0 {
 		fmt.Println("curate: no currency items with an item_path found, nothing to sync")
@@ -185,6 +185,7 @@ func runSync(ctx context.Context, dbase *db.DB, args []string) {
 			ItemPath:     r.path,
 			TradeID:      r.tradeID,
 			Name:         r.name,
+			Category:     sql.NullString{String: r.category, Valid: r.category != ""},
 			DiscoveredAt: now,
 			UpdatedAt:    now,
 		}); err != nil {

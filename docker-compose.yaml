@@ -6,7 +6,6 @@ services:
       MYSQL_DATABASE: core
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./internal/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     ports:
       - "3306:3306"
     healthcheck:
@@ -16,6 +15,19 @@ services:
       retries: 10
     restart: unless-stopped
 
+  migrate:
+    build: .
+    image: poe-tg-tracker:latest
+    command: ["./migrate"]
+    env_file:
+      - .env
+    environment:
+      DB_DSN: "root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
   bot:
     build: .
     image: poe-tg-tracker:latest
@@ -24,8 +36,8 @@ services:
     environment:
       DB_DSN: "root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4"
     depends_on:
-      mysql:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   fetch-cron:

@@ -12,22 +12,19 @@ import (
 	"time"
 
 	"github.com/grysha11/poe-tg-tracker/internal/config"
-	"github.com/grysha11/poe-tg-tracker/internal/db"
-	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
 	"github.com/grysha11/poe-tg-tracker/internal/emoji"
 	"github.com/grysha11/poe-tg-tracker/internal/exchange"
+	"github.com/grysha11/poe-tg-tracker/internal/gatewayclient"
 	"github.com/grysha11/poe-tg-tracker/internal/logger"
+	pb "github.com/grysha11/poe-tg-tracker/internal/pb/exchangev1"
 	"github.com/grysha11/poe-tg-tracker/internal/telegram"
 )
 
 type App struct {
-	bot    *telegram.Bot
-	client *exchange.Client
-	q      *dbgen.Queries
-	base   exchange.Currency
-	quotes []exchange.Currency
-	cfg    config.Config
-	log    *slog.Logger
+	bot *telegram.Bot
+	gw  *gatewayclient.Client
+	cfg config.Config
+	log *slog.Logger
 }
 
 func main() {
@@ -42,30 +39,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	dbase, err := db.Open(cfg.DBDSN)
-	if err != nil {
-		log.Error("db open failed", "err", err)
-		os.Exit(1)
-	}
-	defer dbase.Close()
-
-	base, quotes, err := loadDefaultRates(ctx, dbase.Q)
-	if err != nil {
-		log.Error("load default rate pairs failed", "err", err)
-		os.Exit(1)
-	}
-
 	app := &App{
-		bot:    telegram.NewBot(cfg.TelegramToken),
-		client: exchange.NewClient(cfg.UserAgent),
-		q:      dbase.Q,
-		base:   base,
-		quotes: quotes,
-		cfg:    cfg,
-		log:    log,
+		bot: telegram.NewBot(cfg.TelegramToken),
+		gw:  gatewayclient.New(cfg.GatewayAddr),
+		cfg: cfg,
+		log: log,
 	}
 
-	log.Info("starting", "league", cfg.League)
+	log.Info("starting", "league", cfg.League, "gateway", cfg.GatewayAddr)
 
 	var offset int64
 	for {
@@ -97,31 +78,6 @@ func main() {
 			}
 		}
 	}
-}
-
-func loadDefaultRates(ctx context.Context, q *dbgen.Queries) (exchange.Currency, []exchange.Currency, error) {
-	rows, err := q.ListDefaultRatePairs(ctx)
-	if err != nil {
-		return exchange.Currency{}, nil, err
-	}
-	if len(rows) == 0 {
-		return exchange.Currency{}, nil, fmt.Errorf("no default rate pairs configured")
-	}
-
-	for _, r := range rows {
-		if !r.BaseItemPath.Valid || !r.QuoteItemPath.Valid {
-			return exchange.Currency{}, nil, fmt.Errorf(
-				"default_rate_pairs row (base_currency_id=%d, quote_currency_id=%d) references a missing currency",
-				r.BaseCurrencyID, r.QuoteCurrencyID)
-		}
-	}
-
-	base := exchange.Currency{ID: rows[0].BaseItemPath.String, Name: rows[0].BaseName.String, TradeID: rows[0].BaseTradeID.String}
-	quotes := make([]exchange.Currency, 0, len(rows))
-	for _, r := range rows {
-		quotes = append(quotes, exchange.Currency{ID: r.QuoteItemPath.String, Name: r.QuoteName.String, TradeID: r.QuoteTradeID.String})
-	}
-	return base, quotes, nil
 }
 
 func (a *App) isWhitelisted(userID int64) bool {
@@ -169,13 +125,12 @@ func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
 		a.send(ctx, msg.Chat.ID, text, telegram.RatesKeyboard("volume"))
 
 	case "leagues":
-		d, err := a.client.Fetch(ctx, exchange.AlignHour(time.Now()).Add(-time.Hour).Unix())
+		leagues, err := a.gw.ListLeagues(ctx)
 		if err != nil {
 			a.log.Error("leagues fetch failed", "err", err)
 			a.send(ctx, msg.Chat.ID, "Couldn't reach the exchange API.", nil)
 			return
 		}
-		leagues := exchange.Leagues(d)
 		if len(leagues) == 0 {
 			a.send(ctx, msg.Chat.ID, "No leagues in that hour.", nil)
 			return
@@ -227,59 +182,42 @@ func (a *App) send(ctx context.Context, chatID int64, text string, markup *teleg
 }
 
 func (a *App) buildRates(ctx context.Context, view string) (string, error) {
-	hourUnix, err := a.q.LatestSnapshotHour(ctx, a.cfg.League)
-	if err != nil {
-		return "", err
-	}
-	if hourUnix == 0 {
-		return "", fmt.Errorf("no snapshots yet for league %q", a.cfg.League)
-	}
-
-	dbRows, err := a.q.ListSnapshotRatesForHour(ctx, dbgen.ListSnapshotRatesForHourParams{
-		HourUtc: hourUnix,
-		League:  a.cfg.League,
-	})
-	if err != nil {
-		return "", err
-	}
-	rows := toSnapshotRows(dbRows)
-
-	var ranked []exchange.CurrencyRate
+	pbView := pb.RateView_RATE_VIEW_VOLUME
 	if view == "price" {
-		chaos, _ := quoteByTradeID(a.quotes, "chaos")
-		exalt, _ := quoteByTradeID(a.quotes, "exalted")
-		ranked = exchange.RankByPrice(rows, a.base, chaos, exalt, 10)
-	} else {
-		ranked = exchange.RankByVolume(rows, a.base, 10)
+		pbView = pb.RateView_RATE_VIEW_PRICE
 	}
 
-	return formatRanked(view, a.base, ranked, time.Unix(hourUnix, 0).UTC(), a.cfg.League), nil
-}
-
-func toSnapshotRows(rows []dbgen.ListSnapshotRatesForHourRow) []exchange.SnapshotRow {
-	out := make([]exchange.SnapshotRow, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, exchange.SnapshotRow{
-			ItemA:         exchange.Currency{ID: r.ItemAPath, Name: r.ItemAName, TradeID: r.ItemATradeID},
-			ItemB:         exchange.Currency{ID: r.ItemBPath, Name: r.ItemBName, TradeID: r.ItemBTradeID},
-			VolumeA:       uint64(r.VolumeA),
-			VolumeB:       uint64(r.VolumeB),
-			LowestRatioA:  uint64(r.LowestRatioA),
-			LowestRatioB:  uint64(r.LowestRatioB),
-			HighestRatioA: uint64(r.HighestRatioA),
-			HighestRatioB: uint64(r.HighestRatioB),
-		})
+	resp, err := a.gw.GetRates(ctx, a.cfg.League, pbView, 10)
+	if err != nil {
+		return "", err
 	}
-	return out
-}
 
-func quoteByTradeID(quotes []exchange.Currency, tradeID string) (exchange.Currency, bool) {
-	for _, q := range quotes {
-		if q.TradeID == tradeID {
-			return q, true
+	base := toCurrency(resp.GetBase())
+	ranked := make([]exchange.CurrencyRate, 0, len(resp.GetRates()))
+	for _, r := range resp.GetRates() {
+		cr := exchange.CurrencyRate{
+			Currency: toCurrency(r.GetCurrency()),
+			Rate: exchange.Rate{
+				Quote:    r.GetCurrency().GetItemPath(),
+				VWAP:     r.GetVwap(),
+				Low:      r.GetLow(),
+				High:     r.GetHigh(),
+				BaseVol:  r.GetBaseVolume(),
+				QuoteVol: r.GetQuoteVolume(),
+			},
 		}
+		if r.GetVia() != nil {
+			via := toCurrency(r.GetVia())
+			cr.Via = &via
+		}
+		ranked = append(ranked, cr)
 	}
-	return exchange.Currency{}, false
+
+	return formatRanked(view, base, ranked, time.Unix(resp.GetHourUtc(), 0).UTC(), resp.GetLeague()), nil
+}
+
+func toCurrency(c *pb.CurrencyRef) exchange.Currency {
+	return exchange.Currency{ID: c.GetItemPath(), Name: c.GetName(), TradeID: c.GetTradeId()}
 }
 
 func formatValue(v float64) string {

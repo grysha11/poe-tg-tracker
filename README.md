@@ -6,7 +6,9 @@ cp .env.example .env   # fill in TELGRAM_BOT_TOKEN, POE_LEAGUE, POE_CONTACT, MYS
 
 `WHITELIST` is a required comma-separated list of Telegram user IDs (`123,456`); the bot won't start without it and rejects everyone else. To onboard someone: have them message the bot, copy their `user_id` from the `rejected message: user not whitelisted` log line, add it to `WHITELIST` and restart.
 
-`DB_DSN` is auto-set for the `bot`/`exchange-service`/`fetch-cron` containers from `MYSQL_ROOT_PASSWORD`. Only fill it in `.env` yourself if running a binary directly on the host (see below) — use `127.0.0.1:3306` there instead of `mysql:3306`.
+`DB_DSN` is auto-set for the `exchange-service`/`fetch-cron` containers from `MYSQL_ROOT_PASSWORD`. Only fill it in `.env` yourself if running a binary directly on the host (see below) — use `127.0.0.1:3306` there instead of `mysql:3306`.
+
+The bot doesn't touch the DB: it gets rates through the gateway at `GATEWAY_ADDR` (auto-set to `http://gateway:8080` in compose).
 
 `curate` doesn't touch the DB: it calls exchange-service's admin gRPC API at `EXCHANGE_SERVICE_ADDR` (auto-set to `exchange-service:9090` in the `bot` container).
 
@@ -97,7 +99,7 @@ docker compose exec bot ./curate sync
 
 ### First-run bootstrap
 
-On an empty database the bot refuses to start (no default rate pairs). Seed in this order:
+On an empty database the bot still starts, but `/rates` replies with an error until the DB has default rate pairs and at least one fetched hour. Seed in this order, then run the fetcher once (see above) or wait for the hourly cron:
 
 ```
 docker compose run --rm bot ./curate sync

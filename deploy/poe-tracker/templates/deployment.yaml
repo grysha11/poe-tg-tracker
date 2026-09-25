@@ -1,3 +1,6 @@
+{{- if not .Values.gateway.enabled }}
+{{- fail "the bot requires gateway.enabled (it reads rates through the gateway)" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,12 +37,4 @@ spec:
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- if .Values.readinessProbe.enabled }}
-          readinessProbe:
-            httpGet:
-              path: {{ .Values.readinessProbe.path }}
-              port: {{ .Values.readinessProbe.port }}
-            periodSeconds: 10
-            failureThreshold: 3
           {{- end }}

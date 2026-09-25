@@ -33,7 +33,3 @@ resources:
     memory: 64Mi
   limits:
     memory: 256Mi
-readinessProbe:
-  enabled: false
-  path: /healthz
-  port: 8080

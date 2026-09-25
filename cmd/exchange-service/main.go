@@ -49,7 +49,8 @@ func main() {
 
 	league := os.Getenv("POE_LEAGUE")
 	if league == "" {
-		league = "Forbidden Rites"
+		fmt.Fprintln(os.Stderr, "exchange-service: POE_LEAGUE env required")
+		os.Exit(1)
 	}
 
 	addr := os.Getenv("GRPC_LISTEN_ADDR")

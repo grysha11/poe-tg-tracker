@@ -32,9 +32,8 @@ func LoadDotEnv() {
 type Config struct {
 	TelegramToken string
 	League        string
-	UserAgent     string
 	LogLevel      string
-	DBDSN         string
+	GatewayAddr   string
 	Whitelist     []int64
 }
 
@@ -79,23 +78,14 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 
-	league, err := takeEnv("POE_LEAGUE")
-	if err != nil {
-		league = "Forbidden Rites"
-	}
-
-	contact, err := takeEnv("POE_CONTACT")
-	if err != nil {
-		return Config{}, err
-	}
-	user := fmt.Sprintf("poe-tg-tracker/0.1.0 (contact: %s)", contact)
+	league := os.Getenv("POE_LEAGUE")
 
 	logLevel, err := takeEnv("LOG_LEVEL")
 	if err != nil {
 		logLevel = "info"
 	}
 
-	dbDSN, err := takeEnv("DB_DSN")
+	gatewayAddr, err := takeEnv("GATEWAY_ADDR")
 	if err != nil {
 		return Config{}, err
 	}
@@ -108,9 +98,8 @@ func LoadConfig() (Config, error) {
 	return Config{
 		TelegramToken: token,
 		League:        league,
-		UserAgent:     user,
 		LogLevel:      logLevel,
-		DBDSN:         dbDSN,
+		GatewayAddr:   gatewayAddr,
 		Whitelist:     whitelist,
 	}, nil
 }

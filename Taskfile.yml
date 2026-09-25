@@ -75,8 +75,6 @@ tasks:
         kubectl -n {{.NAMESPACE}} run curate-bootstrap --rm -i --restart=Never \
           --image={{.IMAGE}}:{{.TAG}} --image-pull-policy=Never \
           --overrides='{"spec":{"containers":[{"name":"curate","image":"{{.IMAGE}}:{{.TAG}}","imagePullPolicy":"Never","command":["sh","-c","./curate sync && ./curate bootstrap"],"envFrom":[{"configMapRef":{"name":"{{.RELEASE}}-config"}},{"secretRef":{"name":"{{.DEV_SECRET}}"}}]}]}}'
-      - kubectl -n {{.NAMESPACE}} rollout restart deploy/{{.RELEASE}}
-      - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}} --timeout=60s
 
   dev:fetch-once:
     desc: Trigger a single manual fetcher run against the dev DB (same as prod's hourly cron)

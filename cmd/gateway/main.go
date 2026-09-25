@@ -126,10 +126,10 @@ func logRequests(log *slog.Logger, next http.Handler) http.Handler {
 
 		attrs := []any{"method", r.Method, "path", r.URL.Path, "status", rec.status, "dur", time.Since(start)}
 		switch {
-		case rec.status >= 500:
-			log.Error("request failed", attrs...)
 		case r.URL.Path == "/healthz" || r.URL.Path == "/readyz":
 			log.Debug("probe", attrs...)
+		case rec.status >= 500:
+			log.Error("request failed", attrs...)
 		default:
 			log.Info("request", attrs...)
 		}

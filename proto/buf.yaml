@@ -4,6 +4,8 @@ modules:
 lint:
   use:
     - STANDARD
+  ignore:
+    - google
 breaking:
   use:
     - FILE

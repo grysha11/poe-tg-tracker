@@ -1,4 +1,8 @@
 version: v2
+inputs:
+  - directory: .
+    paths:
+      - exchange
 plugins:
   - local: ../.tools/protoc-gen-go
     out: ..

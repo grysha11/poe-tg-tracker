@@ -29,8 +29,6 @@ func (s *QueryServer) GetRates(ctx context.Context, req *pb.GetRatesRequest) (*p
 		league = s.DefaultLeague
 	}
 
-	// Loaded per request rather than once at startup (as bot used to): this
-	// process is long-lived and curate can change default_rate_pairs under it.
 	base, quotes, err := s.loadDefaultRates(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "load default rate pairs: %v", err)

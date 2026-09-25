@@ -90,11 +90,11 @@ func seed(t *testing.T, dbase *db.DB) {
 	insertSnapshot(t, dbase, testLeague, testHour, divine, mirror, 50, 10)
 }
 
-func newClient(t *testing.T, dbase *db.DB) pb.ExchangeQueryServiceClient {
+func serveBufconn(t *testing.T, register func(*grpc.Server)) *grpc.ClientConn {
 	t.Helper()
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
-	pb.RegisterExchangeQueryServiceServer(srv, &exchangesvc.QueryServer{Q: dbase.Q, DefaultLeague: testLeague})
+	register(srv)
 	go srv.Serve(lis)
 	t.Cleanup(srv.Stop)
 
@@ -105,6 +105,14 @@ func newClient(t *testing.T, dbase *db.DB) pb.ExchangeQueryServiceClient {
 		t.Fatalf("dial bufconn: %v", err)
 	}
 	t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
+func newClient(t *testing.T, dbase *db.DB) pb.ExchangeQueryServiceClient {
+	t.Helper()
+	conn := serveBufconn(t, func(srv *grpc.Server) {
+		pb.RegisterExchangeQueryServiceServer(srv, &exchangesvc.QueryServer{Q: dbase.Q, DefaultLeague: testLeague})
+	})
 	return pb.NewExchangeQueryServiceClient(conn)
 }
 

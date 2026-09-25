@@ -22,6 +22,7 @@ import (
 	"github.com/grysha11/poe-tg-tracker/internal/exchangesvc"
 	"github.com/grysha11/poe-tg-tracker/internal/logger"
 	pb "github.com/grysha11/poe-tg-tracker/internal/pb/exchangev1"
+	"github.com/grysha11/poe-tg-tracker/internal/poe2scout"
 )
 
 func main() {
@@ -77,6 +78,11 @@ func main() {
 	pb.RegisterExchangeQueryServiceServer(srv, &exchangesvc.QueryServer{
 		Q:             dbase.Q,
 		Client:        exchange.NewClient(userAgent),
+		DefaultLeague: league,
+	})
+	pb.RegisterExchangeAdminServiceServer(srv, &exchangesvc.AdminServer{
+		Q:             dbase.Q,
+		Scout:         poe2scout.NewClient(userAgent),
 		DefaultLeague: league,
 	})
 

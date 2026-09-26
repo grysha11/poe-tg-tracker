@@ -78,7 +78,7 @@ func main() {
 
 	pb.RegisterExchangeQueryServiceServer(srv, &exchangesvc.QueryServer{
 		Q:             dbase.Q,
-		Client:        exchange.NewClient(userAgent),
+		Digests:       exchange.NewClient(userAgent),
 		DefaultLeague: league,
 	})
 	pb.RegisterExchangeAdminServiceServer(srv, &exchangesvc.AdminServer{

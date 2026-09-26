@@ -18,7 +18,7 @@ type QueryServer struct {
 	pb.UnimplementedExchangeQueryServiceServer
 
 	Q             *dbgen.Queries
-	Client        *exchange.Client
+	Digests       *exchange.Client
 	DefaultLeague string
 }
 
@@ -84,7 +84,7 @@ func (s *QueryServer) ListLeagues(ctx context.Context, req *pb.ListLeaguesReques
 		hour = exchange.AlignHour(time.Now()).Add(-time.Hour).Unix()
 	}
 
-	d, err := s.Client.Fetch(ctx, hour)
+	d, err := s.Digests.Fetch(ctx, hour)
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "fetch exchange digest: %v", err)
 	}

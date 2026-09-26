@@ -32,15 +32,6 @@ func newAdminClient(t *testing.T, dbase *db.DB, scout exchangesvc.ScoutClient) p
 	return pb.NewExchangeAdminServiceClient(conn)
 }
 
-func insertPlaceholder(t *testing.T, dbase *db.DB, itemPath string) {
-	t.Helper()
-	if _, err := dbase.Exec(
-		`INSERT INTO currencies (item_path, trade_id, name, is_placeholder, discovered_at, updated_at) VALUES (?, ?, ?, 1, 0, 0)`,
-		itemPath, itemPath, itemPath); err != nil {
-		t.Fatalf("insert placeholder %s: %v", itemPath, err)
-	}
-}
-
 func TestListPlaceholderCurrencies(t *testing.T) {
 	dbase := newTestDB(t)
 	insertPlaceholder(t, dbase, "Metadata/Items/SoulCores/Unknown")

@@ -61,9 +61,11 @@ func (s *QueryServer) GetRates(ctx context.Context, req *pb.GetRatesRequest) (*p
 
 	var ranked []exchange.CurrencyRate
 	if req.GetView() == pb.RateView_RATE_VIEW_PRICE {
-		chaos, _ := quoteByTradeID(pairs, "chaos")
-		exalt, _ := quoteByTradeID(pairs, "exalted")
-		ranked = exchange.RankByPrice(rows, base, chaos, exalt, limit)
+		quotes := make([]exchange.Currency, 0, len(pairs))
+		for _, p := range pairs {
+			quotes = append(quotes, p.quote)
+		}
+		ranked = exchange.RankByPrice(rows, base, quotes, limit)
 	} else {
 		ranked = exchange.RankByVolume(rows, base, limit)
 	}
@@ -115,13 +117,4 @@ func (s *QueryServer) loadRatePairs(ctx context.Context) ([]ratePair, error) {
 		pairs = append(pairs, ratePairFromDB(r))
 	}
 	return pairs, nil
-}
-
-func quoteByTradeID(pairs []ratePair, tradeID string) (exchange.Currency, bool) {
-	for _, p := range pairs {
-		if p.quote.TradeID == tradeID {
-			return p.quote, true
-		}
-	}
-	return exchange.Currency{}, false
 }

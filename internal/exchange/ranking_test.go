@@ -60,7 +60,7 @@ func TestRankByVolume(t *testing.T) {
 
 func TestRankByPrice(t *testing.T) {
 	t.Run("empty rows", func(t *testing.T) {
-		if got := RankByPrice(nil, divine, chaos, exalt, 10); len(got) != 0 {
+		if got := RankByPrice(nil, divine, []Currency{chaos, exalt}, 10); len(got) != 0 {
 			t.Fatalf("RankByPrice(nil) = %v, want empty", got)
 		}
 	})
@@ -73,7 +73,7 @@ func TestRankByPrice(t *testing.T) {
 	}
 
 	t.Run("sorts ascending by VWAP (lowest = most expensive)", func(t *testing.T) {
-		got := RankByPrice(rows, divine, chaos, exalt, 10)
+		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10)
 		var order []string
 		for _, cr := range got {
 			order = append(order, cr.Currency.TradeID)
@@ -90,7 +90,7 @@ func TestRankByPrice(t *testing.T) {
 	})
 
 	t.Run("routes via chaos when no direct rate exists", func(t *testing.T) {
-		got := RankByPrice(rows, divine, chaos, exalt, 10)
+		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10)
 		var annulRate *CurrencyRate
 		for i := range got {
 			if got[i].Currency.TradeID == "annul" {
@@ -109,7 +109,7 @@ func TestRankByPrice(t *testing.T) {
 	})
 
 	t.Run("direct rate is never overridden by a via rate", func(t *testing.T) {
-		got := RankByPrice(rows, divine, chaos, exalt, 10)
+		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10)
 		for _, cr := range got {
 			if cr.Currency.TradeID == "chaos" && cr.Via != nil {
 				t.Errorf("chaos has a direct rate, Via should be nil, got %v", cr.Via)
@@ -118,7 +118,7 @@ func TestRankByPrice(t *testing.T) {
 	})
 
 	t.Run("limit truncates the most expensive first", func(t *testing.T) {
-		got := RankByPrice(rows, divine, chaos, exalt, 1)
+		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 1)
 		if len(got) != 1 || got[0].Currency.TradeID != "mirror" {
 			t.Fatalf("got = %+v, want just mirror (lowest VWAP)", got)
 		}

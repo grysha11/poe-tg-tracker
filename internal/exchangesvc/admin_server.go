@@ -11,19 +11,14 @@ import (
 	"google.golang.org/grpc/status"
 
 	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
+	"github.com/grysha11/poe-tg-tracker/internal/exchange"
 	pb "github.com/grysha11/poe-tg-tracker/internal/pb/exchangev1"
 	"github.com/grysha11/poe-tg-tracker/internal/poe2scout"
 )
 
-const (
-	defaultScoutRealm = "poe2"
-	divinePath        = "Metadata/Items/Currency/CurrencyModValues"
-)
+const defaultScoutRealm = "poe2"
 
-var defaultQuotePaths = []string{
-	"Metadata/Items/Currency/CurrencyRerollRare",   // Chaos
-	"Metadata/Items/Currency/CurrencyAddModToRare", // Exalt
-}
+var defaultQuotePaths = []string{exchange.ChaosPath, exchange.ExaltPath}
 
 type ScoutClient interface {
 	AllCurrencyItems(ctx context.Context, realm, league string) ([]poe2scout.CurrencyItem, error)
@@ -131,7 +126,7 @@ func (s *AdminServer) SyncCurrenciesFromScout(ctx context.Context, req *pb.SyncC
 func (s *AdminServer) BootstrapDefaultRatePairs(ctx context.Context, req *pb.BootstrapDefaultRatePairsRequest) (*pb.BootstrapDefaultRatePairsResponse, error) {
 	basePath := req.GetBaseItemPath()
 	if basePath == "" {
-		basePath = divinePath
+		basePath = exchange.DivinePath
 	}
 	quotePaths := req.GetQuoteItemPaths()
 	if len(quotePaths) == 0 {

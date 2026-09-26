@@ -9,6 +9,7 @@ vars:
   TAG: dev
   DEV_SECRET: poe-tracker-secrets-dev
   MYSQL_SCHEMA_CM: "{{.RELEASE}}-mysql-schema"
+  APP_DEPLOYS: "deploy/{{.RELEASE}} deploy/{{.RELEASE}}-exchange-service deploy/{{.RELEASE}}-gateway"
 
 tasks:
   minikube:start:
@@ -24,21 +25,9 @@ tasks:
       - minikube stop -p {{.PROFILE}}
 
   docker:build:
-    desc: Build the shared multi-binary image
-    sources:
-      - go.mod
-      - go.sum
-      - cmd/**/*.go
-      - internal/**/*.go
-      - Dockerfile
+    desc: Build the shared multi-binary image directly inside minikube's docker daemon
     cmds:
-      - docker build -t {{.IMAGE}}:{{.TAG}} .
-
-  minikube:load:
-    desc: Load the freshly built image into the minikube node (no registry needed)
-    deps: [docker:build]
-    cmds:
-      - minikube image load {{.IMAGE}}:{{.TAG}} -p {{.PROFILE}}
+      - eval $(minikube -p {{.PROFILE}} docker-env) && docker build -t {{.IMAGE}}:{{.TAG}} .
 
   namespace:
     desc: Create the dev namespace (single task, run once, so parallel deps don't race to create it)
@@ -70,8 +59,6 @@ tasks:
 
   db:schema-configmap:
     desc: Sync the schema.sql ConfigMap the dev MySQL pod bootstraps from
-    sources:
-      - internal/db/schema.sql
     deps: [namespace]
     cmds:
       - |
@@ -83,12 +70,11 @@ tasks:
     desc: Seed the dev DB (curate sync + bootstrap) — needed after every fresh dev:up, mysql's data is ephemeral (emptyDir) and doesn't survive dev:down
     cmds:
       - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-mysql --timeout=120s
+      - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-exchange-service --timeout=120s
       - |
         kubectl -n {{.NAMESPACE}} run curate-bootstrap --rm -i --restart=Never \
           --image={{.IMAGE}}:{{.TAG}} --image-pull-policy=Never \
           --overrides='{"spec":{"containers":[{"name":"curate","image":"{{.IMAGE}}:{{.TAG}}","imagePullPolicy":"Never","command":["sh","-c","./curate sync && ./curate bootstrap"],"envFrom":[{"configMapRef":{"name":"{{.RELEASE}}-config"}},{"secretRef":{"name":"{{.DEV_SECRET}}"}}]}]}}'
-      - kubectl -n {{.NAMESPACE}} rollout restart deploy/{{.RELEASE}}
-      - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}} --timeout=60s
 
   dev:fetch-once:
     desc: Trigger a single manual fetcher run against the dev DB (same as prod's hourly cron)
@@ -101,7 +87,7 @@ tasks:
 
   helm:dev-install:
     desc: helm upgrade --install against minikube with dev overrides
-    deps: [minikube:load, secrets:dev, db:schema-configmap]
+    deps: [docker:build, secrets:dev, db:schema-configmap]
     cmds:
       - |
         helm upgrade --install {{.RELEASE}} {{.CHART}} \
@@ -111,6 +97,7 @@ tasks:
           --set image.repository={{.IMAGE}} \
           --set image.tag={{.TAG}} \
           --set existingSecret={{.DEV_SECRET}}
+      - kubectl -n {{.NAMESPACE}} rollout restart {{.APP_DEPLOYS}}
 
   dev:up:
     desc: Full inner loop — start cluster, build, load, deploy
@@ -134,6 +121,11 @@ tasks:
       - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-mysql --timeout=120s
       - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}} --timeout=90s
 
+  dev:gateway-forward:
+    desc: Port-forward the dev gateway to localhost:8080 (e.g. curl localhost:8080/v1/rates)
+    cmds:
+      - kubectl -n {{.NAMESPACE}} port-forward svc/{{.RELEASE}}-gateway 8080:8080
+
   dev:mysql-forward:
     desc: Port-forward the dev MySQL to localhost:3307 for inspection
     cmds:
@@ -156,6 +148,60 @@ tasks:
       - minikube delete -p {{.PROFILE}}
 
   test:
-    desc: Run the Go test suite (needs TEST_DB_DSN — see README)
+    desc: Run the Go test suite (needs TEST_DB_DSN — see README, or use test:db)
     cmds:
-      - go test ./...
+      - go test -p 1 ./...
+
+  test:db-up:
+    desc: Start the disposable test MySQL on :3307 (tests TRUNCATE everything — never point them at real data)
+    status:
+      - docker inspect -f '{{`{{.State.Running}}`}}' poe-mysql-test 2>/dev/null | grep -q true
+    cmds:
+      - |
+        docker run -d --rm --name poe-mysql-test -p 3307:3306 \
+          -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=core \
+          -v "{{.ROOT_DIR}}/internal/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro" \
+          mysql:8.4
+      - until docker exec poe-mysql-test mysql -h127.0.0.1 -uroot -ptest -e 'SELECT 1 FROM core.currencies LIMIT 1' >/dev/null 2>&1; do sleep 1; done
+
+  test:db-down:
+    desc: Stop (and remove) the disposable test MySQL
+    cmds:
+      - docker stop poe-mysql-test || true
+
+  test:db:
+    desc: Run the Go test suite against the disposable test MySQL
+    deps: [test:db-up]
+    env:
+      TEST_DB_DSN: "root:test@tcp(127.0.0.1:3307)/core?parseTime=false&charset=utf8mb4"
+    cmds:
+      - go test -p 1 ./...
+
+  tools:proto:
+    desc: Build the pinned protobuf codegen plugins (go.mod tool deps) into .tools/
+    sources:
+      - go.mod
+      - go.sum
+    generates:
+      - .tools/protoc-gen-go
+      - .tools/protoc-gen-go-grpc
+      - .tools/protoc-gen-grpc-gateway
+    cmds:
+      - mkdir -p .tools
+      - |
+        GOBIN={{.ROOT_DIR}}/.tools go install \
+          google.golang.org/protobuf/cmd/protoc-gen-go \
+          google.golang.org/grpc/cmd/protoc-gen-go-grpc \
+          github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
+
+  proto:gen:
+    desc: Regenerate Go stubs from proto/*.proto (needs buf — pacman -S buf)
+    deps: [tools:proto]
+    dir: proto
+    sources:
+      - "**/*.proto"
+    generates:
+      - ../internal/pb/exchangev1/*.go
+    cmds:
+      - buf generate
+      - cd .. && go mod tidy

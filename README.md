@@ -6,7 +6,11 @@ cp .env.example .env   # fill in TELGRAM_BOT_TOKEN, POE_LEAGUE, POE_CONTACT, MYS
 
 `WHITELIST` is a required comma-separated list of Telegram user IDs (`123,456`); the bot won't start without it and rejects everyone else. To onboard someone: have them message the bot, copy their `user_id` from the `rejected message: user not whitelisted` log line, add it to `WHITELIST` and restart.
 
-`DB_DSN` is auto-set for the `bot`/`fetch-cron` containers from `MYSQL_ROOT_PASSWORD`. Only fill it in `.env` yourself if running a binary directly on the host (see below) — use `127.0.0.1:3306` there instead of `mysql:3306`.
+`DB_DSN` is auto-set for the `exchange-service`/`fetch-cron` containers from `MYSQL_ROOT_PASSWORD`. Only fill it in `.env` yourself if running a binary directly on the host (see below) — use `127.0.0.1:3306` there instead of `mysql:3306`.
+
+The bot doesn't touch the DB: it gets rates through the gateway at `GATEWAY_ADDR` (auto-set to `http://gateway:8080` in compose).
+
+`curate` doesn't touch the DB: it calls exchange-service's admin gRPC API at `EXCHANGE_SERVICE_ADDR` (auto-set to `exchange-service:9090` in the `bot` container).
 
 ## Run
 
@@ -32,6 +36,7 @@ task dev:bootstrap # seed the DB (curate sync + bootstrap) — needed after ever
 task dev:fetch-once # optional: pull one hour of real rate data immediately, instead of waiting for the cron
 task dev:smoke     # wait for rollout, sanity-check both Deployments are healthy
 task dev:logs      # tail the bot's logs
+task dev:gateway-forward # expose the gateway on localhost:8080
 task dev:watch     # rebuild + redeploy automatically on Go source changes
 task dev:down      # remove the release, keep the cluster running
 task dev:destroy   # tear down the release and the minikube cluster
@@ -49,6 +54,22 @@ no SealedSecrets, a plain Secret rebuilt from `.env` by `task secrets:dev`)
 and never touches the homelab or GHCR. See `Taskfile.yml` for the full task
 list.
 
+## Gateway (REST API)
+
+`gateway` is the REST/JSON front door for clients (bot today; Discord bot, website, desktop app later). It proxies to exchange-service over gRPC via grpc-gateway, generated from `proto/exchange/v1/query.proto`:
+
+```
+GET /v1/rates?league=<league>&view=RATE_VIEW_VOLUME|RATE_VIEW_PRICE&limit=<n>
+GET /v1/leagues
+GET /v1/rate-pairs/default
+GET /healthz   # liveness
+GET /readyz    # readiness: exchange-service's gRPC health
+```
+
+All params are optional (league defaults to `POE_LEAGUE`, view to volume, limit to 10). 64-bit ints (`hourUtc`, `baseVolume`, …) are JSON strings, per protojson. Admin RPCs (what `curate` uses) are deliberately not exposed here.
+
+No auth yet: the Service is ClusterIP-only and compose binds it to `127.0.0.1`. Add auth before exposing it to anything outside the cluster.
+
 ## Fetcher (manual run)
 
 Normally runs on cron. To trigger a fetch now instead of waiting:
@@ -61,7 +82,7 @@ Flag: `-hour <unix_ts>` to backfill a specific hour. Stale-payload detection (th
 
 ## Curate
 
-Manages currency names in the DB (raw API only gives internal item paths, not display names).
+Manages currency names (raw API only gives internal item paths, not display names) through exchange-service's admin API.
 
 ```
 docker compose exec bot ./curate list
@@ -70,7 +91,7 @@ docker compose exec bot ./curate set -path <item_path> -trade-id <id> -name <nam
 
 ### Sync from poe2scout
 
-Bulk-upserts real names for all known currencies straight into the DB. Safe to re-run; won't touch emoji ids you've already curated:
+Bulk-upserts real names for all known currencies. Safe to re-run; won't touch emoji ids you've already curated:
 
 ```
 docker compose exec bot ./curate sync
@@ -78,7 +99,7 @@ docker compose exec bot ./curate sync
 
 ### First-run bootstrap
 
-On an empty database the bot refuses to start (no default rate pairs). Seed in this order:
+On an empty database the bot still starts, but `/rates` replies with an error until the DB has default rate pairs and at least one fetched hour. Seed in this order, then run the fetcher once (see above) or wait for the hourly cron:
 
 ```
 docker compose run --rm bot ./curate sync
@@ -89,7 +110,16 @@ docker compose run --rm bot ./curate bootstrap
 
 ## Tests
 
-Tests truncate all tables before each run — never point `TEST_DB_DSN` at the `mysql` service from `docker compose up` (that's your real dev data). Use a separate, disposable container:
+Tests truncate all tables before each run — never point `TEST_DB_DSN` at the `mysql` service from `docker compose up` or the minikube dev MySQL (that's your real dev data). Easiest:
+
+```
+task test:db       # starts a disposable mysql:8.4 on :3307 if needed, runs go test -p 1 ./...
+task test:db-down  # stop and remove it
+```
+
+`-p 1` matters: every DB-backed package truncates the same test DB, so packages can't run concurrently.
+
+Or by hand, with a separate, disposable container:
 
 ```
 docker run -d --rm --name poe-mysql-test -p 3307:3306 \
@@ -98,7 +128,7 @@ docker run -d --rm --name poe-mysql-test -p 3307:3306 \
   mysql:8.4
 
 export TEST_DB_DSN="root:test@tcp(127.0.0.1:3307)/core?parseTime=false&charset=utf8mb4"
-go test ./...
+go test -p 1 ./...
 
 docker stop poe-mysql-test   # when done
 ```

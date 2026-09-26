@@ -9,6 +9,8 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /out/bot ./cmd/bot
 RUN CGO_ENABLED=0 go build -o /out/fetcher ./cmd/fetcher
 RUN CGO_ENABLED=0 go build -o /out/curate ./cmd/curate
+RUN CGO_ENABLED=0 go build -o /out/exchange-service ./cmd/exchange-service
+RUN CGO_ENABLED=0 go build -o /out/gateway ./cmd/gateway
 
 FROM debian:bookworm-slim
 
@@ -20,6 +22,8 @@ WORKDIR /app
 COPY --from=builder /out/bot ./bot
 COPY --from=builder /out/fetcher ./fetcher
 COPY --from=builder /out/curate ./curate
+COPY --from=builder /out/exchange-service ./exchange-service
+COPY --from=builder /out/gateway ./gateway
 
 USER bot
 CMD ["./bot"]

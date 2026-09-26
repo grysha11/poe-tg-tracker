@@ -22,10 +22,41 @@ services:
     env_file:
       - .env
     environment:
+      GATEWAY_ADDR: "http://gateway:8080"
+      EXCHANGE_SERVICE_ADDR: "exchange-service:9090"
+    depends_on:
+      gateway:
+        condition: service_started
+      exchange-service:
+        condition: service_started
+    restart: unless-stopped
+
+  exchange-service:
+    build: .
+    image: poe-tg-tracker:latest
+    command: ["./exchange-service"]
+    env_file:
+      - .env
+    environment:
       DB_DSN: "root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4"
     depends_on:
       mysql:
         condition: service_healthy
+    restart: unless-stopped
+
+  gateway:
+    build: .
+    image: poe-tg-tracker:latest
+    command: ["./gateway"]
+    env_file:
+      - .env
+    environment:
+      EXCHANGE_SERVICE_ADDR: "exchange-service:9090"
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      exchange-service:
+        condition: service_started
     restart: unless-stopped
 
   fetch-cron:

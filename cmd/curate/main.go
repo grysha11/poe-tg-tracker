@@ -2,18 +2,18 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"os"
-	"sort"
 	"text/tabwriter"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+
 	"github.com/grysha11/poe-tg-tracker/internal/config"
-	"github.com/grysha11/poe-tg-tracker/internal/db"
-	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
-	"github.com/grysha11/poe-tg-tracker/internal/poe2scout"
+	pb "github.com/grysha11/poe-tg-tracker/internal/pb/exchangev1"
 )
 
 func main() {
@@ -24,49 +24,48 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
 
 	switch os.Args[1] {
 	case "list":
-		dbase := mustOpenDB()
-		defer dbase.Close()
-		runList(ctx, dbase)
+		runList(ctx, mustDial())
 	case "set":
-		dbase := mustOpenDB()
-		defer dbase.Close()
-		runSet(ctx, dbase, os.Args[2:])
+		runSet(ctx, mustDial(), os.Args[2:])
 	case "sync":
-		dbase := mustOpenDB()
-		defer dbase.Close()
-		runSync(ctx, dbase, os.Args[2:])
+		runSync(ctx, mustDial(), os.Args[2:])
 	case "bootstrap":
-		dbase := mustOpenDB()
-		defer dbase.Close()
-		runBootstrap(ctx, dbase)
+		runBootstrap(ctx, mustDial())
 	default:
 		usage()
 		os.Exit(1)
 	}
 }
 
-func mustOpenDB() *db.DB {
-	dbDSN := os.Getenv("DB_DSN")
-	if dbDSN == "" {
-		fmt.Fprintln(os.Stderr, "curate: DB_DSN env required")
+func mustDial() pb.ExchangeAdminServiceClient {
+	addr := os.Getenv("EXCHANGE_SERVICE_ADDR")
+	if addr == "" {
+		fmt.Fprintln(os.Stderr, "curate: EXCHANGE_SERVICE_ADDR env required")
 		os.Exit(1)
 	}
 
-	dbase, err := db.Open(dbDSN)
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "curate: db open failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "curate: dial %s failed: %v\n", addr, err)
 		os.Exit(1)
 	}
+	return pb.NewExchangeAdminServiceClient(conn)
+}
 
-	return dbase
+func fail(action string, err error) {
+	fmt.Fprintf(os.Stderr, "curate: %s failed: %s\n", action, status.Convert(err).Message())
+	os.Exit(1)
 }
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `curate: manage auto-discovered placeholder currencies
+
+Talks to exchange-service's admin API (EXCHANGE_SERVICE_ADDR), not the DB.
 
 Usage:
   curate list
@@ -80,32 +79,32 @@ Usage:
       "curate sync" first so the currencies exist. Safe to re-run.
 
   curate sync [-realm poe2] [-league "Forbidden Rites"]
-      Upsert trade_id/name directly into the DB for every currency known to
-      api.poe2scout.com, matched by item_path. Safe to re-run.`)
+      Upsert trade_id/name for every currency known to api.poe2scout.com,
+      matched by item_path. League defaults to exchange-service's POE_LEAGUE.
+      Safe to re-run.`)
 }
 
-func runList(ctx context.Context, dbase *db.DB) {
-	rows, err := dbase.Q.ListPlaceholderCurrencies(ctx)
+func runList(ctx context.Context, client pb.ExchangeAdminServiceClient) {
+	resp, err := client.ListPlaceholderCurrencies(ctx, &pb.ListPlaceholderCurrenciesRequest{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "curate: list failed: %v\n", err)
-		os.Exit(1)
+		fail("list", err)
 	}
-	if len(rows) == 0 {
+	if len(resp.GetCurrencies()) == 0 {
 		fmt.Println("no placeholder currencies pending curation")
 		return
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tITEM_PATH\tPLACEHOLDER_NAME\tDISCOVERED_AT")
-	for _, r := range rows {
+	for _, c := range resp.GetCurrencies() {
 		fmt.Fprintf(w, "%d\t%s\t%s\t%s\n",
-			r.CurrencyID, r.ItemPath, r.Name,
-			time.Unix(r.DiscoveredAt, 0).UTC().Format(time.RFC3339))
+			c.GetCurrencyId(), c.GetItemPath(), c.GetName(),
+			time.Unix(c.GetDiscoveredAt(), 0).UTC().Format(time.RFC3339))
 	}
 	w.Flush()
 }
 
-func runSet(ctx context.Context, dbase *db.DB, args []string) {
+func runSet(ctx context.Context, client pb.ExchangeAdminServiceClient, args []string) {
 	fs := flag.NewFlagSet("set", flag.ExitOnError)
 	path := fs.String("path", "", "currency item_path, e.g. Metadata/Items/Currency/CurrencyRerollRare")
 	tradeID := fs.String("trade-id", "", "short trade id, e.g. chaos")
@@ -119,111 +118,39 @@ func runSet(ctx context.Context, dbase *db.DB, args []string) {
 		os.Exit(1)
 	}
 
-	emojiID := sql.NullString{}
-	if *emoji != "" {
-		emojiID = sql.NullString{String: *emoji, Valid: true}
-	}
-
-	now := time.Now().Unix()
-	if err := dbase.Q.UpsertCurrencyCurated(ctx, dbgen.UpsertCurrencyCuratedParams{
-		ItemPath:     *path,
-		TradeID:      *tradeID,
-		Name:         *name,
-		EmojiID:      emojiID,
-		DiscoveredAt: now,
-		UpdatedAt:    now,
+	if _, err := client.CurateCurrency(ctx, &pb.CurateCurrencyRequest{
+		ItemPath: *path,
+		TradeId:  *tradeID,
+		Name:     *name,
+		EmojiId:  *emoji,
 	}); err != nil {
-		fmt.Fprintf(os.Stderr, "curate: set failed: %v\n", err)
-		os.Exit(1)
+		fail("set", err)
 	}
 
 	fmt.Printf("curated %s -> trade_id=%s name=%s\n", *path, *tradeID, *name)
 }
 
-func runSync(ctx context.Context, dbase *db.DB, args []string) {
+func runSync(ctx context.Context, client pb.ExchangeAdminServiceClient, args []string) {
 	fs := flag.NewFlagSet("sync", flag.ExitOnError)
 	realm := fs.String("realm", "poe2", "poe2scout realm")
-	league := fs.String("league", "Forbidden Rites", "poe2scout league name")
+	league := fs.String("league", "", "poe2scout league name (default: exchange-service's POE_LEAGUE)")
 	fs.Parse(args)
 
-	userAgent := "poe-tg-tracker-curate/0.1.0"
-	if contact := os.Getenv("POE_CONTACT"); contact != "" {
-		userAgent = fmt.Sprintf("poe-tg-tracker-curate/0.1.0 (contact: %s)", contact)
-	}
-
-	items, err := poe2scout.NewClient(userAgent).AllCurrencyItems(ctx, *realm, *league)
+	resp, err := client.SyncCurrenciesFromScout(ctx, &pb.SyncCurrenciesFromScoutRequest{Realm: *realm, League: *league})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "curate: sync fetch failed: %v\n", err)
-		os.Exit(1)
+		fail("sync", err)
 	}
 
-	type row struct{ path, tradeID, name string }
-	seen := make(map[string]bool, len(items))
-	var rows []row
-	skipped := 0
-	for _, item := range items {
-		if item.BaseItemTypeId == nil || *item.BaseItemTypeId == "" {
-			skipped++
-			continue
-		}
-		path := *item.BaseItemTypeId
-		if seen[path] {
-			continue
-		}
-		seen[path] = true
-		rows = append(rows, row{path: path, tradeID: item.ApiId, name: item.Text})
-	}
-	if len(rows) == 0 {
-		fmt.Println("curate: no currency items with an item_path found, nothing to sync")
-		return
-	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].path < rows[j].path })
-
-	now := time.Now().Unix()
-	for _, r := range rows {
-		if err := dbase.Q.UpsertCurrencySynced(ctx, dbgen.UpsertCurrencySyncedParams{
-			ItemPath:     r.path,
-			TradeID:      r.tradeID,
-			Name:         r.name,
-			DiscoveredAt: now,
-			UpdatedAt:    now,
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "curate: sync upsert failed for %s: %v\n", r.path, err)
-			os.Exit(1)
-		}
-	}
-
-	fmt.Printf("synced %d currencies (%d skipped: no item_path)\n", len(rows), skipped)
+	fmt.Printf("synced %d currencies (%d skipped: no item_path)\n", resp.GetSyncedCount(), resp.GetSkippedCount())
 }
 
-const divinePath = "Metadata/Items/Currency/CurrencyModValues"
-
-var defaultQuotePaths = []string{
-	"Metadata/Items/Currency/CurrencyRerollRare",   // Chaos
-	"Metadata/Items/Currency/CurrencyAddModToRare", // Exalt
-}
-
-func runBootstrap(ctx context.Context, dbase *db.DB) {
-	base, err := dbase.Q.GetCurrencyByPath(ctx, divinePath)
+func runBootstrap(ctx context.Context, client pb.ExchangeAdminServiceClient) {
+	resp, err := client.BootstrapDefaultRatePairs(ctx, &pb.BootstrapDefaultRatePairsRequest{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "curate: base currency %s not found (run \"curate sync\" first): %v\n", divinePath, err)
-		os.Exit(1)
+		fail("bootstrap", err)
 	}
 
-	for i, path := range defaultQuotePaths {
-		quote, err := dbase.Q.GetCurrencyByPath(ctx, path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "curate: quote currency %s not found (run \"curate sync\" first): %v\n", path, err)
-			os.Exit(1)
-		}
-		if err := dbase.Q.UpsertDefaultRatePair(ctx, dbgen.UpsertDefaultRatePairParams{
-			BaseCurrencyID:  base.CurrencyID,
-			QuoteCurrencyID: quote.CurrencyID,
-			SortOrder:       int64(i),
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "curate: bootstrap upsert failed for %s: %v\n", path, err)
-			os.Exit(1)
-		}
-		fmt.Printf("default pair: %s -> %s\n", base.Name, quote.Name)
+	for _, p := range resp.GetPairs() {
+		fmt.Printf("default pair: %s -> %s\n", p.GetBase().GetName(), p.GetQuote().GetName())
 	}
 }

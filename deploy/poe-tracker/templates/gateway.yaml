@@ -1,0 +1,1 @@
+{{- include "poe-tracker.component" (dict "root" $ "name" "gateway" "values" .Values.gateway "protocol" "http" "secret" false) }}

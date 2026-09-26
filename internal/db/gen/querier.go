@@ -12,6 +12,7 @@ type Querier interface {
 	CountOrphanRatePairCurrencies(ctx context.Context) (int64, error)
 	CountOrphanSnapshotCurrencies(ctx context.Context) (int64, error)
 	GetCurrencyByPath(ctx context.Context, itemPath string) (Currency, error)
+	GetCurrencyByPathForUpdate(ctx context.Context, itemPath string) (Currency, error)
 	InsertMarketSnapshot(ctx context.Context, arg InsertMarketSnapshotParams) error
 	LatestFetchBefore(ctx context.Context, hourUtc int64) (FetchLog, error)
 	LatestSnapshotHour(ctx context.Context, league string) (int64, error)

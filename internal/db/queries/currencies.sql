@@ -25,6 +25,9 @@ ON DUPLICATE KEY UPDATE
 -- name: GetCurrencyByPath :one
 SELECT * FROM currencies WHERE item_path = ?;
 
+-- name: GetCurrencyByPathForUpdate :one
+SELECT * FROM currencies WHERE item_path = ? FOR UPDATE;
+
 -- name: ListCurrencies :many
 SELECT * FROM currencies ORDER BY name;
 

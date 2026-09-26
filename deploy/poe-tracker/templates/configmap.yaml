@@ -8,9 +8,5 @@ data:
   {{- range $key, $value := .Values.config }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}
-  {{- if .Values.exchangeService.enabled }}
   EXCHANGE_SERVICE_ADDR: "{{ include "poe-tracker.fullname" . }}-exchange-service:{{ .Values.exchangeService.port }}"
-  {{- end }}
-  {{- if .Values.gateway.enabled }}
   GATEWAY_ADDR: "http://{{ include "poe-tracker.fullname" . }}-gateway:{{ .Values.gateway.port }}"
-  {{- end }}

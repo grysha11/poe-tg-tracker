@@ -112,16 +112,16 @@ func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
 			"/rates — show rates",
 			"/leagues — list league strings",
 		}, "\n")
-		a.send(ctx, msg.Chat.ID, text, telegram.RatesKeyboard("volume"))
+		a.send(ctx, msg.Chat.ID, text, ratesKeyboard(volumeView))
 
 	case "rates":
-		text, err := a.buildRates(ctx, "volume")
+		text, err := a.buildRates(ctx, volumeView)
 		if err != nil {
 			a.log.Error("rates fetch failed", "err", err)
-			a.send(ctx, msg.Chat.ID, "Couldn't get rates right now. Try again shortly.", telegram.RatesKeyboard("volume"))
+			a.send(ctx, msg.Chat.ID, "Couldn't get rates right now. Try again shortly.", ratesKeyboard(volumeView))
 			return
 		}
-		a.send(ctx, msg.Chat.ID, text, telegram.RatesKeyboard("volume"))
+		a.send(ctx, msg.Chat.ID, text, ratesKeyboard(volumeView))
 
 	case "leagues":
 		leagues, err := a.gw.ListLeagues(ctx)
@@ -152,8 +152,9 @@ func (a *App) handleCallback(ctx context.Context, cb *telegram.CallbackQuery) {
 		return
 	}
 
-	prefix, view, hasView := strings.Cut(cb.Data, ":")
-	if prefix != "rates" || (view != "volume" && view != "price") || !hasView || cb.Message == nil {
+	prefix, key, _ := strings.Cut(cb.Data, ":")
+	view, ok := viewByKey(key)
+	if prefix != ratesCallback || !ok || cb.Message == nil {
 		_ = a.bot.AnswerCallbackQuery(ctx, cb.ID, "")
 		return
 	}
@@ -169,7 +170,7 @@ func (a *App) handleCallback(ctx context.Context, cb *telegram.CallbackQuery) {
 		a.log.Error("answerCallbackQuery failed", "err", err)
 	}
 
-	if err := a.bot.EditMessageText(ctx, cb.Message.Chat.ID, cb.Message.MessageID, text, telegram.RatesKeyboard(view)); err != nil {
+	if err := a.bot.EditMessageText(ctx, cb.Message.Chat.ID, cb.Message.MessageID, text, ratesKeyboard(view)); err != nil {
 		a.log.Error("editMessageText failed", "err", err)
 	}
 }
@@ -180,13 +181,8 @@ func (a *App) send(ctx context.Context, chatID int64, text string, markup *teleg
 	}
 }
 
-func (a *App) buildRates(ctx context.Context, view string) (string, error) {
-	pbView := pb.RateView_RATE_VIEW_VOLUME
-	if view == "price" {
-		pbView = pb.RateView_RATE_VIEW_PRICE
-	}
-
-	resp, err := a.gw.GetRates(ctx, a.cfg.League, pbView, 10)
+func (a *App) buildRates(ctx context.Context, view rateView) (string, error) {
+	resp, err := view.load(ctx, a)
 	if err != nil {
 		return "", err
 	}
@@ -205,15 +201,11 @@ func formatValue(v float64) string {
 	}
 }
 
-func formatRanked(view string, resp *pb.GetRatesResponse) string {
+func formatRanked(view rateView, resp *pb.GetRatesResponse) string {
 	var b strings.Builder
 	base := resp.GetBase()
 
-	title, icon := "Top 10 by volume", "📊"
-	if view == "price" {
-		title, icon = "Most expensive", "💰"
-	}
-	fmt.Fprintf(&b, "%s <b>%s — %s</b>\n\n", icon, title, resp.GetLeague())
+	fmt.Fprintf(&b, "%s <b>%s — %s</b>\n\n", view.icon, view.title, resp.GetLeague())
 
 	if len(resp.GetRates()) == 0 {
 		b.WriteString("No data for this hour yet.\n\n")

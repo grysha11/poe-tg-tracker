@@ -41,7 +41,7 @@ func TestBuildRates_FormatsGatewayResponse(t *testing.T) {
 		log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	text, err := app.buildRates(context.Background(), "price")
+	text, err := app.buildRates(context.Background(), priceView)
 	if err != nil {
 		t.Fatalf("buildRates: %v", err)
 	}
@@ -73,7 +73,22 @@ func TestBuildRates_GatewayErrorIsReturned(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	app := &App{gw: gatewayclient.New(ts.URL), cfg: config.Config{League: "Forbidden Rites"}}
-	if _, err := app.buildRates(context.Background(), "volume"); err == nil {
+	if _, err := app.buildRates(context.Background(), volumeView); err == nil {
 		t.Fatal("buildRates succeeded, want the gateway's 404 surfaced as an error")
+	}
+}
+
+func TestRatesKeyboard_MarksActiveViewAndRoutesBack(t *testing.T) {
+	row := ratesKeyboard(priceView).InlineKeyboard[0]
+
+	want := []string{"📊 Top volume", "• 💰 Most expensive"}
+	for i, b := range row {
+		if b.Text != want[i] {
+			t.Errorf("button %d text = %q, want %q", i, b.Text, want[i])
+		}
+		prefix, key, _ := strings.Cut(b.CallbackData, ":")
+		if v, ok := viewByKey(key); prefix != ratesCallback || !ok || v.key != rateViews[i].key {
+			t.Errorf("button %d callback %q does not route back to view %q", i, b.CallbackData, rateViews[i].key)
+		}
 	}
 }

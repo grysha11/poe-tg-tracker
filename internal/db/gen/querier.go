@@ -14,6 +14,7 @@ type Querier interface {
 	GetCurrencyByPath(ctx context.Context, itemPath string) (Currency, error)
 	GetCurrencyByPathForUpdate(ctx context.Context, itemPath string) (Currency, error)
 	InsertMarketSnapshot(ctx context.Context, arg InsertMarketSnapshotParams) error
+	LatestFetch(ctx context.Context) (FetchLog, error)
 	LatestFetchBefore(ctx context.Context, hourUtc int64) (FetchLog, error)
 	LatestSnapshotHour(ctx context.Context, league string) (int64, error)
 	ListCurrencies(ctx context.Context) ([]Currency, error)

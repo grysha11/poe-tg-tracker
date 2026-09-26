@@ -59,9 +59,10 @@ func formatRanked(view rateView, resp *pb.GetRatesResponse) string {
 		}
 	}
 
-	hour := time.Unix(resp.GetHourUtc(), 0).UTC()
-	fmt.Fprintf(&b, "Hour from %s UTC\n", hour.Format("15:04 Jan 2"))
-	fmt.Fprintf(&b, "<i>checked %s UTC</i>", time.Now().UTC().Format("15:04:05"))
+	if last := resp.GetLastFetchUtc(); last != 0 {
+		fmt.Fprintf(&b, "Last fetch time: %s UTC\n", time.Unix(last, 0).UTC().Format("15:04 Jan 2"))
+	}
+	fmt.Fprintf(&b, "<i>Checked %s UTC</i>", time.Now().UTC().Format("15:04:05"))
 
 	return b.String()
 }

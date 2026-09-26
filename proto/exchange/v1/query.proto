@@ -59,6 +59,7 @@ message GetRatesResponse {
   repeated RankedRate rates = 2;
   int64 hour_utc = 3;
   string league = 4;
+  int64 last_fetch_utc = 5;
 }
 
 message ListLeaguesRequest {

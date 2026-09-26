@@ -10,3 +10,8 @@ SELECT hour_utc, payload_sha256, fetched_at FROM fetch_log
 WHERE hour_utc < ?
 ORDER BY hour_utc DESC
 LIMIT 1;
+
+-- name: LatestFetch :one
+SELECT hour_utc, payload_sha256, fetched_at FROM fetch_log
+ORDER BY fetched_at DESC
+LIMIT 1;

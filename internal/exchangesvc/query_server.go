@@ -2,6 +2,8 @@ package exchangesvc
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -59,6 +61,14 @@ func (s *QueryServer) GetRates(ctx context.Context, req *pb.GetRatesRequest) (*p
 		limit = defaultRatesLimit
 	}
 
+	var lastFetchUnix int64
+	switch last, err := s.Q.LatestFetch(ctx); {
+	case err == nil:
+		lastFetchUnix = last.FetchedAt
+	case !errors.Is(err, sql.ErrNoRows):
+		return nil, status.Errorf(codes.Internal, "latest fetch: %v", err)
+	}
+
 	var ranked []exchange.CurrencyRate
 	if req.GetView() == pb.RateView_RATE_VIEW_PRICE {
 		quotes := make([]exchange.Currency, 0, len(pairs))
@@ -71,10 +81,11 @@ func (s *QueryServer) GetRates(ctx context.Context, req *pb.GetRatesRequest) (*p
 	}
 
 	return &pb.GetRatesResponse{
-		Base:    toCurrencyRef(base),
-		Rates:   toRankedRates(ranked),
-		HourUtc: hourUnix,
-		League:  league,
+		Base:         toCurrencyRef(base),
+		Rates:        toRankedRates(ranked),
+		HourUtc:      hourUnix,
+		League:       league,
+		LastFetchUtc: lastFetchUnix,
 	}, nil
 }
 

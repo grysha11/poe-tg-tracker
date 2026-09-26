@@ -33,7 +33,17 @@ func seed(t *testing.T, dbase *db.DB) {
 	insertSnapshot(t, dbase, testLeague, testHour, divine, chaos, 10, 1500)
 	insertSnapshot(t, dbase, testLeague, testHour, divine, exalt, 30, 600)
 	insertSnapshot(t, dbase, testLeague, testHour, divine, mirror, 50, 10)
+
+	for _, hour := range []int64{testHour - 3600, testHour} {
+		if _, err := dbase.Exec(
+			`INSERT INTO fetch_log (hour_utc, payload_sha256, fetched_at) VALUES (?, ?, ?)`,
+			hour, "sha", hour+3600+63); err != nil {
+			t.Fatalf("insert fetch log: %v", err)
+		}
+	}
 }
+
+const testFetchedAt = testHour + 3600 + 63
 
 func newClient(t *testing.T, dbase *db.DB) pb.ExchangeQueryServiceClient {
 	t.Helper()
@@ -78,6 +88,9 @@ func TestGetRates(t *testing.T) {
 		}
 		if resp.GetLeague() != testLeague || resp.GetHourUtc() != testHour {
 			t.Errorf("league/hour = %q/%d, want %q/%d", resp.GetLeague(), resp.GetHourUtc(), testLeague, testHour)
+		}
+		if resp.GetLastFetchUtc() != testFetchedAt {
+			t.Errorf("last fetch = %d, want %d", resp.GetLastFetchUtc(), testFetchedAt)
 		}
 		if resp.GetBase().GetTradeId() != "divine" {
 			t.Errorf("base = %s, want divine", resp.GetBase().GetTradeId())

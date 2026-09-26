@@ -289,6 +289,7 @@ type GetRatesResponse struct {
 	Rates         []*RankedRate          `protobuf:"bytes,2,rep,name=rates,proto3" json:"rates,omitempty"`
 	HourUtc       int64                  `protobuf:"varint,3,opt,name=hour_utc,json=hourUtc,proto3" json:"hour_utc,omitempty"`
 	League        string                 `protobuf:"bytes,4,opt,name=league,proto3" json:"league,omitempty"`
+	LastFetchUtc  int64                  `protobuf:"varint,5,opt,name=last_fetch_utc,json=lastFetchUtc,proto3" json:"last_fetch_utc,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -349,6 +350,13 @@ func (x *GetRatesResponse) GetLeague() string {
 		return x.League
 	}
 	return ""
+}
+
+func (x *GetRatesResponse) GetLastFetchUtc() int64 {
+	if x != nil {
+		return x.LastFetchUtc
+	}
+	return 0
 }
 
 type ListLeaguesRequest struct {
@@ -601,12 +609,13 @@ const file_exchange_v1_query_proto_rawDesc = "" +
 	"\vbase_volume\x18\x05 \x01(\x04R\n" +
 	"baseVolume\x12!\n" +
 	"\fquote_volume\x18\x06 \x01(\x04R\vquoteVolume\x12*\n" +
-	"\x03via\x18\a \x01(\v2\x18.exchange.v1.CurrencyRefR\x03via\"\xa2\x01\n" +
+	"\x03via\x18\a \x01(\v2\x18.exchange.v1.CurrencyRefR\x03via\"\xc8\x01\n" +
 	"\x10GetRatesResponse\x12,\n" +
 	"\x04base\x18\x01 \x01(\v2\x18.exchange.v1.CurrencyRefR\x04base\x12-\n" +
 	"\x05rates\x18\x02 \x03(\v2\x17.exchange.v1.RankedRateR\x05rates\x12\x19\n" +
 	"\bhour_utc\x18\x03 \x01(\x03R\ahourUtc\x12\x16\n" +
-	"\x06league\x18\x04 \x01(\tR\x06league\"/\n" +
+	"\x06league\x18\x04 \x01(\tR\x06league\x12$\n" +
+	"\x0elast_fetch_utc\x18\x05 \x01(\x03R\flastFetchUtc\"/\n" +
 	"\x12ListLeaguesRequest\x12\x19\n" +
 	"\bhour_utc\x18\x01 \x01(\x03R\ahourUtc\"/\n" +
 	"\x13ListLeaguesResponse\x12\x18\n" +

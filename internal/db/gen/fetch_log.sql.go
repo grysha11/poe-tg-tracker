@@ -9,6 +9,19 @@ import (
 	"context"
 )
 
+const latestFetch = `-- name: LatestFetch :one
+SELECT hour_utc, payload_sha256, fetched_at FROM fetch_log
+ORDER BY fetched_at DESC
+LIMIT 1
+`
+
+func (q *Queries) LatestFetch(ctx context.Context) (FetchLog, error) {
+	row := q.db.QueryRowContext(ctx, latestFetch)
+	var i FetchLog
+	err := row.Scan(&i.HourUtc, &i.PayloadSha256, &i.FetchedAt)
+	return i, err
+}
+
 const latestFetchBefore = `-- name: LatestFetchBefore :one
 SELECT hour_utc, payload_sha256, fetched_at FROM fetch_log
 WHERE hour_utc < ?

@@ -24,6 +24,7 @@ const priceRatesJSON = `{
      "via": {"itemPath": "Metadata/Items/Currency/CurrencyRerollRare", "name": "Chaos Orb", "tradeId": "chaos"}}
   ],
   "hourUtc": "1790359200",
+  "lastFetchUtc": "1790362863",
   "league": "Forbidden Rites"
 }`
 
@@ -57,7 +58,7 @@ func TestBuildRates_FormatsGatewayResponse(t *testing.T) {
 		"1 Divine Orb = <b>75.0</b>",
 		"Orb of Annulment <i>(via Chaos Orb)</i>",
 		"<i>range 70.0–80.0 Divine Orb</i>",
-		"Hour from 18:00 Sep 25 UTC",
+		"Last fetch time: 19:01 Sep 25 UTC",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("message missing %q\n--- message ---\n%s", want, text)

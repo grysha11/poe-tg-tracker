@@ -2,7 +2,6 @@ package exchangesvc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -29,10 +28,14 @@ func (s *QueryServer) GetRates(ctx context.Context, req *pb.GetRatesRequest) (*p
 		league = s.DefaultLeague
 	}
 
-	base, quotes, err := s.loadDefaultRates(ctx)
+	pairs, err := s.loadRatePairs(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "load default rate pairs: %v", err)
+		return nil, err
 	}
+	if len(pairs) == 0 {
+		return nil, status.Error(codes.FailedPrecondition, "no default rate pairs configured")
+	}
+	base := pairs[0].base
 
 	hourUnix, err := s.Q.LatestSnapshotHour(ctx, league)
 	if err != nil {
@@ -58,8 +61,8 @@ func (s *QueryServer) GetRates(ctx context.Context, req *pb.GetRatesRequest) (*p
 
 	var ranked []exchange.CurrencyRate
 	if req.GetView() == pb.RateView_RATE_VIEW_PRICE {
-		chaos, _ := quoteByTradeID(quotes, "chaos")
-		exalt, _ := quoteByTradeID(quotes, "exalted")
+		chaos, _ := quoteByTradeID(pairs, "chaos")
+		exalt, _ := quoteByTradeID(pairs, "exalted")
 		ranked = exchange.RankByPrice(rows, base, chaos, exalt, limit)
 	} else {
 		ranked = exchange.RankByVolume(rows, base, limit)
@@ -88,102 +91,37 @@ func (s *QueryServer) ListLeagues(ctx context.Context, req *pb.ListLeaguesReques
 }
 
 func (s *QueryServer) ListDefaultRatePairs(ctx context.Context, _ *pb.ListDefaultRatePairsRequest) (*pb.ListDefaultRatePairsResponse, error) {
+	pairs, err := s.loadRatePairs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.ListDefaultRatePairsResponse{Pairs: toDefaultRatePairs(pairs)}, nil
+}
+
+// loadRatePairs returns gRPC status errors so handlers can pass them through.
+func (s *QueryServer) loadRatePairs(ctx context.Context) ([]ratePair, error) {
 	rows, err := s.Q.ListDefaultRatePairs(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "list default rate pairs: %v", err)
 	}
-	if err := checkRatePairRows(rows); err != nil {
-		return nil, status.Error(codes.FailedPrecondition, err.Error())
-	}
 
-	pairs := make([]*pb.DefaultRatePair, 0, len(rows))
-	for _, r := range rows {
-		pairs = append(pairs, &pb.DefaultRatePair{
-			Base:      &pb.CurrencyRef{ItemPath: r.BaseItemPath.String, Name: r.BaseName.String, TradeId: r.BaseTradeID.String},
-			Quote:     &pb.CurrencyRef{ItemPath: r.QuoteItemPath.String, Name: r.QuoteName.String, TradeId: r.QuoteTradeID.String},
-			SortOrder: int32(r.SortOrder),
-		})
-	}
-
-	return &pb.ListDefaultRatePairsResponse{Pairs: pairs}, nil
-}
-
-func (s *QueryServer) loadDefaultRates(ctx context.Context) (exchange.Currency, []exchange.Currency, error) {
-	rows, err := s.Q.ListDefaultRatePairs(ctx)
-	if err != nil {
-		return exchange.Currency{}, nil, err
-	}
-	if len(rows) == 0 {
-		return exchange.Currency{}, nil, fmt.Errorf("no default rate pairs configured")
-	}
-	if err := checkRatePairRows(rows); err != nil {
-		return exchange.Currency{}, nil, err
-	}
-
-	base := exchange.Currency{ID: rows[0].BaseItemPath.String, Name: rows[0].BaseName.String, TradeID: rows[0].BaseTradeID.String}
-	quotes := make([]exchange.Currency, 0, len(rows))
-	for _, r := range rows {
-		quotes = append(quotes, exchange.Currency{ID: r.QuoteItemPath.String, Name: r.QuoteName.String, TradeID: r.QuoteTradeID.String})
-	}
-	return base, quotes, nil
-}
-
-func checkRatePairRows(rows []dbgen.ListDefaultRatePairsRow) error {
+	pairs := make([]ratePair, 0, len(rows))
 	for _, r := range rows {
 		if !r.BaseItemPath.Valid || !r.QuoteItemPath.Valid {
-			return fmt.Errorf(
+			return nil, status.Errorf(codes.FailedPrecondition,
 				"default_rate_pairs row (base_currency_id=%d, quote_currency_id=%d) references a missing currency",
 				r.BaseCurrencyID, r.QuoteCurrencyID)
 		}
+		pairs = append(pairs, ratePairFromDB(r))
 	}
-	return nil
+	return pairs, nil
 }
 
-func toSnapshotRows(rows []dbgen.ListSnapshotRatesForHourRow) []exchange.SnapshotRow {
-	out := make([]exchange.SnapshotRow, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, exchange.SnapshotRow{
-			ItemA:         exchange.Currency{ID: r.ItemAPath, Name: r.ItemAName, TradeID: r.ItemATradeID},
-			ItemB:         exchange.Currency{ID: r.ItemBPath, Name: r.ItemBName, TradeID: r.ItemBTradeID},
-			VolumeA:       uint64(r.VolumeA),
-			VolumeB:       uint64(r.VolumeB),
-			LowestRatioA:  uint64(r.LowestRatioA),
-			LowestRatioB:  uint64(r.LowestRatioB),
-			HighestRatioA: uint64(r.HighestRatioA),
-			HighestRatioB: uint64(r.HighestRatioB),
-		})
-	}
-	return out
-}
-
-func quoteByTradeID(quotes []exchange.Currency, tradeID string) (exchange.Currency, bool) {
-	for _, q := range quotes {
-		if q.TradeID == tradeID {
-			return q, true
+func quoteByTradeID(pairs []ratePair, tradeID string) (exchange.Currency, bool) {
+	for _, p := range pairs {
+		if p.quote.TradeID == tradeID {
+			return p.quote, true
 		}
 	}
 	return exchange.Currency{}, false
-}
-
-func toCurrencyRef(c exchange.Currency) *pb.CurrencyRef {
-	return &pb.CurrencyRef{ItemPath: c.ID, Name: c.Name, TradeId: c.TradeID}
-}
-
-func toRankedRates(ranked []exchange.CurrencyRate) []*pb.RankedRate {
-	out := make([]*pb.RankedRate, 0, len(ranked))
-	for _, cr := range ranked {
-		rr := &pb.RankedRate{
-			Currency:    toCurrencyRef(cr.Currency),
-			Vwap:        cr.Rate.VWAP,
-			Low:         cr.Rate.Low,
-			High:        cr.Rate.High,
-			BaseVolume:  cr.Rate.BaseVol,
-			QuoteVolume: cr.Rate.QuoteVol,
-		}
-		if cr.Via != nil {
-			rr.Via = toCurrencyRef(*cr.Via)
-		}
-		out = append(out, rr)
-	}
-	return out
 }

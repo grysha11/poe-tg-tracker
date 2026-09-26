@@ -143,7 +143,7 @@ func (s *AdminServer) BootstrapDefaultRatePairs(ctx context.Context, req *pb.Boo
 		return nil, err
 	}
 
-	pairs := make([]*pb.DefaultRatePair, 0, len(quotePaths))
+	pairs := make([]ratePair, 0, len(quotePaths))
 	for i, path := range quotePaths {
 		quote, err := s.currencyByPath(ctx, path)
 		if err != nil {
@@ -156,13 +156,9 @@ func (s *AdminServer) BootstrapDefaultRatePairs(ctx context.Context, req *pb.Boo
 		}); err != nil {
 			return nil, status.Errorf(codes.Internal, "upsert default rate pair %s: %v", path, err)
 		}
-		pairs = append(pairs, &pb.DefaultRatePair{
-			Base:      &pb.CurrencyRef{ItemPath: base.ItemPath, Name: base.Name, TradeId: base.TradeID},
-			Quote:     &pb.CurrencyRef{ItemPath: quote.ItemPath, Name: quote.Name, TradeId: quote.TradeID},
-			SortOrder: int32(i),
-		})
+		pairs = append(pairs, ratePair{base: currencyFromDB(base), quote: currencyFromDB(quote), sortOrder: int32(i)})
 	}
-	return &pb.BootstrapDefaultRatePairsResponse{Pairs: pairs}, nil
+	return &pb.BootstrapDefaultRatePairsResponse{Pairs: toDefaultRatePairs(pairs)}, nil
 }
 
 func (s *AdminServer) currencyByPath(ctx context.Context, path string) (dbgen.Currency, error) {

@@ -13,7 +13,6 @@ import (
 
 	"github.com/grysha11/poe-tg-tracker/internal/config"
 	"github.com/grysha11/poe-tg-tracker/internal/emoji"
-	"github.com/grysha11/poe-tg-tracker/internal/exchange"
 	"github.com/grysha11/poe-tg-tracker/internal/gatewayclient"
 	"github.com/grysha11/poe-tg-tracker/internal/logger"
 	pb "github.com/grysha11/poe-tg-tracker/internal/pb/exchangev1"
@@ -192,32 +191,7 @@ func (a *App) buildRates(ctx context.Context, view string) (string, error) {
 		return "", err
 	}
 
-	base := toCurrency(resp.GetBase())
-	ranked := make([]exchange.CurrencyRate, 0, len(resp.GetRates()))
-	for _, r := range resp.GetRates() {
-		cr := exchange.CurrencyRate{
-			Currency: toCurrency(r.GetCurrency()),
-			Rate: exchange.Rate{
-				Quote:    r.GetCurrency().GetItemPath(),
-				VWAP:     r.GetVwap(),
-				Low:      r.GetLow(),
-				High:     r.GetHigh(),
-				BaseVol:  r.GetBaseVolume(),
-				QuoteVol: r.GetQuoteVolume(),
-			},
-		}
-		if r.GetVia() != nil {
-			via := toCurrency(r.GetVia())
-			cr.Via = &via
-		}
-		ranked = append(ranked, cr)
-	}
-
-	return formatRanked(view, base, ranked, time.Unix(resp.GetHourUtc(), 0).UTC(), resp.GetLeague()), nil
-}
-
-func toCurrency(c *pb.CurrencyRef) exchange.Currency {
-	return exchange.Currency{ID: c.GetItemPath(), Name: c.GetName(), TradeID: c.GetTradeId()}
+	return formatRanked(view, resp), nil
 }
 
 func formatValue(v float64) string {
@@ -231,28 +205,28 @@ func formatValue(v float64) string {
 	}
 }
 
-func formatRanked(view string, base exchange.Currency, ranked []exchange.CurrencyRate, hour time.Time, league string) string {
+func formatRanked(view string, resp *pb.GetRatesResponse) string {
 	var b strings.Builder
+	base := resp.GetBase()
 
 	title, icon := "Top 10 by volume", "📊"
 	if view == "price" {
 		title, icon = "Most expensive", "💰"
 	}
-	fmt.Fprintf(&b, "%s <b>%s — %s</b>\n\n", icon, title, league)
+	fmt.Fprintf(&b, "%s <b>%s — %s</b>\n\n", icon, title, resp.GetLeague())
 
-	if len(ranked) == 0 {
+	if len(resp.GetRates()) == 0 {
 		b.WriteString("No data for this hour yet.\n\n")
 	}
 
-	for _, cr := range ranked {
+	for _, r := range resp.GetRates() {
 		via := ""
-		if cr.Via != nil {
-			via = fmt.Sprintf(" <i>(via %s)</i>", cr.Via.Name)
+		if r.GetVia() != nil {
+			via = fmt.Sprintf(" <i>(via %s)</i>", r.GetVia().GetName())
 		}
 
-		value, low, high := cr.Rate.VWAP, cr.Rate.Low, cr.Rate.High
-		leftName, rightName := base.Name, cr.Currency.Name
-		leftTradeID, rightTradeID := base.TradeID, cr.Currency.TradeID
+		value, low, high := r.GetVwap(), r.GetLow(), r.GetHigh()
+		left, right := base, r.GetCurrency()
 		if value < 1 {
 			invLow, invHigh := low, high
 			if high > 0 {
@@ -262,19 +236,19 @@ func formatRanked(view string, base exchange.Currency, ranked []exchange.Currenc
 				invHigh = 1 / low
 			}
 			value, low, high = 1/value, invLow, invHigh
-			leftName, rightName = cr.Currency.Name, base.Name
-			leftTradeID, rightTradeID = cr.Currency.TradeID, base.TradeID
+			left, right = right, left
 		}
 
 		fmt.Fprintf(&b, "%s 1 %s = <b>%s</b> %s %s%s\n",
-			emoji.Tag(leftTradeID), leftName, formatValue(value), emoji.Tag(rightTradeID), rightName, via)
-		if cr.Via == nil {
-			fmt.Fprintf(&b, "<i>range %s–%s · %d %s traded</i>\n\n", formatValue(low), formatValue(high), cr.Rate.BaseVol, base.Name)
+			emoji.Tag(left.GetTradeId()), left.GetName(), formatValue(value), emoji.Tag(right.GetTradeId()), right.GetName(), via)
+		if r.GetVia() == nil {
+			fmt.Fprintf(&b, "<i>range %s–%s · %d %s traded</i>\n\n", formatValue(low), formatValue(high), r.GetBaseVolume(), base.GetName())
 		} else {
-			fmt.Fprintf(&b, "<i>range %s–%s %s</i>\n\n", formatValue(low), formatValue(high), base.Name)
+			fmt.Fprintf(&b, "<i>range %s–%s %s</i>\n\n", formatValue(low), formatValue(high), base.GetName())
 		}
 	}
 
+	hour := time.Unix(resp.GetHourUtc(), 0).UTC()
 	fmt.Fprintf(&b, "Hour from %s UTC\n", hour.Format("15:04 Jan 2"))
 	fmt.Fprintf(&b, "<i>checked %s UTC</i>", time.Now().UTC().Format("15:04:05"))
 

@@ -34,7 +34,7 @@ spec:
             - containerPort: 3306
           readinessProbe:
             exec:
-              command: ["mysqladmin", "ping", "-h", "localhost"]
+              command: ["mysqladmin", "ping", "-h", "127.0.0.1"]
             periodSeconds: 5
             failureThreshold: 20
           volumeMounts:

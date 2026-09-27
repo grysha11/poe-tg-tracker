@@ -49,18 +49,18 @@ func RankByVolume(rows []SnapshotRow, base Currency, limit int) []CurrencyRate {
 	return out
 }
 
-func RankByPrice(rows []SnapshotRow, base, chaos, exalt Currency, limit int) []CurrencyRate {
+func RankByPrice(rows []SnapshotRow, base Currency, via []Currency, limit int) []CurrencyRate {
 	direct := currencyRatesFrom(rows, base)
 
 	result := make(map[string]CurrencyRate, len(direct))
 	maps.Copy(result, direct)
 
-	fillVia := func(via Currency) {
-		baseToVia, ok := direct[via.ID]
+	for _, v := range via {
+		baseToVia, ok := direct[v.ID]
 		if !ok {
-			return
+			continue
 		}
-		for id, viaRate := range currencyRatesFrom(rows, via) {
+		for id, viaRate := range currencyRatesFrom(rows, v) {
 			if id == base.ID {
 				continue
 			}
@@ -77,12 +77,10 @@ func RankByPrice(rows []SnapshotRow, base, chaos, exalt Currency, limit int) []C
 					BaseVol:  viaRate.Rate.BaseVol,
 					QuoteVol: viaRate.Rate.QuoteVol,
 				},
-				Via: &via,
+				Via: &v,
 			}
 		}
 	}
-	fillVia(chaos)
-	fillVia(exalt)
 
 	out := make([]CurrencyRate, 0, len(result))
 	for _, cr := range result {

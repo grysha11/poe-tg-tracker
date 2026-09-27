@@ -67,21 +67,6 @@ type InlineKeyboardMarkup struct {
 	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
 }
 
-func RatesKeyboard(active string) *InlineKeyboardMarkup {
-	volume, price := "📊 Top volume", "💰 Most expensive"
-	if active == "volume" {
-		volume = "• " + volume
-	} else {
-		price = "• " + price
-	}
-	return &InlineKeyboardMarkup{
-		InlineKeyboard: [][]InlineKeyboardButton{{
-			{Text: volume, CallbackData: "rates:volume"},
-			{Text: price, CallbackData: "rates:price"},
-		}},
-	}
-}
-
 func (b *Bot) api(method string) string {
 	return fmt.Sprintf("https://api.telegram.org/bot%s/%s", b.token, method)
 }

@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package exchange.v1;
+
+option go_package = "github.com/grysha11/poe-tg-tracker/internal/pb/exchangev1;exchangev1";
+
+import "exchange/v1/query.proto";
+
+service ExchangeAdminService {
+  rpc ListPlaceholderCurrencies(ListPlaceholderCurrenciesRequest) returns (ListPlaceholderCurrenciesResponse);
+  rpc CurateCurrency(CurateCurrencyRequest) returns (CurateCurrencyResponse);
+  rpc SyncCurrenciesFromScout(SyncCurrenciesFromScoutRequest) returns (SyncCurrenciesFromScoutResponse);
+  rpc BootstrapDefaultRatePairs(BootstrapDefaultRatePairsRequest) returns (BootstrapDefaultRatePairsResponse);
+}
+
+message ListPlaceholderCurrenciesRequest {}
+
+message PlaceholderCurrency {
+  int64 currency_id = 1;
+  string item_path = 2;
+  string name = 3;
+  int64 discovered_at = 4;
+}
+
+message ListPlaceholderCurrenciesResponse {
+  repeated PlaceholderCurrency currencies = 1;
+}
+
+message CurateCurrencyRequest {
+  string item_path = 1;
+  string trade_id = 2;
+  string name = 3;
+  string emoji_id = 4;
+}
+
+message CurateCurrencyResponse {}
+
+message SyncCurrenciesFromScoutRequest {
+  string realm = 1;
+  string league = 2;
+}
+
+message SyncCurrenciesFromScoutResponse {
+  int32 synced_count = 1;
+  int32 skipped_count = 2;
+}
+
+message BootstrapDefaultRatePairsRequest {
+  string base_item_path = 1;
+  repeated string quote_item_paths = 2;
+}
+
+message BootstrapDefaultRatePairsResponse {
+  repeated DefaultRatePair pairs = 1;
+}

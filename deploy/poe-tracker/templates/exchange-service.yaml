@@ -1,0 +1,1 @@
+{{- include "poe-tracker.component" (dict "root" $ "name" "exchange-service" "values" .Values.exchangeService "protocol" "grpc" "secret" true) }}

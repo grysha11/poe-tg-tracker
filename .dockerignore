@@ -1,4 +1,7 @@
 .git
+.env
+.tools
+.task
 *.db
 *.db-wal
 *.db-shm

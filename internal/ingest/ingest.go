@@ -57,7 +57,7 @@ func Run(ctx context.Context, dbase *db.DB, log *slog.Logger, digest *exchange.D
 			return 0, fmt.Errorf("upsert placeholder %q: %w", itemPath, err)
 		}
 
-		c, err := q.GetCurrencyByPath(ctx, itemPath)
+		c, err := q.GetCurrencyByPathForUpdate(ctx, itemPath)
 		if err != nil {
 			return 0, fmt.Errorf("get currency after upsert %q: %w", itemPath, err)
 		}

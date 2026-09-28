@@ -17,6 +17,7 @@ type Currency struct {
 	IsPlaceholder bool           `json:"is_placeholder"`
 	DiscoveredAt  int64          `json:"discovered_at"`
 	UpdatedAt     int64          `json:"updated_at"`
+	Category      sql.NullString `json:"category"`
 }
 
 type DefaultRatePair struct {

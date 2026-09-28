@@ -89,7 +89,7 @@ func (s *AdminServer) SyncCurrenciesFromScout(ctx context.Context, req *pb.SyncC
 		return nil, status.Errorf(codes.Unavailable, "fetch poe2scout currencies: %v", err)
 	}
 
-	type row struct{ path, tradeID, name string }
+	type row struct{ path, tradeID, name, category string }
 	seen := make(map[string]bool, len(items))
 	var rows []row
 	var skipped int32
@@ -103,7 +103,7 @@ func (s *AdminServer) SyncCurrenciesFromScout(ctx context.Context, req *pb.SyncC
 			continue
 		}
 		seen[path] = true
-		rows = append(rows, row{path: path, tradeID: item.ApiId, name: item.Text})
+		rows = append(rows, row{path: path, tradeID: item.ApiId, name: item.Text, category: item.CategoryApiId})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].path < rows[j].path })
 
@@ -113,6 +113,7 @@ func (s *AdminServer) SyncCurrenciesFromScout(ctx context.Context, req *pb.SyncC
 			ItemPath:     r.path,
 			TradeID:      r.tradeID,
 			Name:         r.name,
+			Category:     sql.NullString{String: r.category, Valid: r.category != ""},
 			DiscoveredAt: now,
 			UpdatedAt:    now,
 		}); err != nil {

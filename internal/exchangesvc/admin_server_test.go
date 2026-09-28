@@ -90,7 +90,7 @@ func TestSyncCurrenciesFromScout(t *testing.T) {
 	}
 
 	scout := &fakeScout{items: []poe2scout.CurrencyItem{
-		{ApiId: "chaos", Text: "Chaos Orb", BaseItemTypeId: new(chaosPath)},
+		{ApiId: "chaos", Text: "Chaos Orb", BaseItemTypeId: new(chaosPath), CategoryApiId: "currency"},
 		{ApiId: "chaos-dup", Text: "Chaos Dup", BaseItemTypeId: new(chaosPath)},
 		{ApiId: "exalted", Text: "Exalted Orb", BaseItemTypeId: new("Metadata/Items/Currency/CurrencyAddModToRare")},
 		{ApiId: "no-path", Text: "No Path"},
@@ -118,6 +118,17 @@ func TestSyncCurrenciesFromScout(t *testing.T) {
 	}
 	if c.EmojiID.String != "e-chaos" {
 		t.Errorf("chaos emoji = %q, want e-chaos (sync must not touch curated emoji)", c.EmojiID.String)
+	}
+	if c.Category.String != "currency" {
+		t.Errorf("chaos category = %q, want currency", c.Category.String)
+	}
+
+	ex, err := dbase.Q.GetCurrencyByPath(ctx, "Metadata/Items/Currency/CurrencyAddModToRare")
+	if err != nil {
+		t.Fatalf("GetCurrencyByPath exalted: %v", err)
+	}
+	if ex.Category.Valid {
+		t.Errorf("exalted category = %q, want NULL when poe2scout has none", ex.Category.String)
 	}
 }
 

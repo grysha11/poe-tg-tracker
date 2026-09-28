@@ -1,7 +1,8 @@
 // Package poe2scout is a minimal client for the public api.poe2scout.com API,
 // used to bulk-resolve currency item_path identifiers (e.g.
 // "Metadata/Items/Currency/CurrencyRerollRare") to their real trade id and
-// display name (e.g. "chaos", "Chaos Orb") for currency curation.
+// display name (e.g. "chaos", "Chaos Orb") and category (e.g. "currency")
+// for currency curation.
 package poe2scout
 
 import (
@@ -29,6 +30,7 @@ type CurrencyItem struct {
 	ApiId          string  `json:"ApiId"`
 	BaseItemTypeId *string `json:"BaseItemTypeId"`
 	Text           string  `json:"Text"`
+	CategoryApiId  string  `json:"CategoryApiId"`
 }
 
 type categoriesResponse struct {

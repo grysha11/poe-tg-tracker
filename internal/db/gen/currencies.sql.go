@@ -11,7 +11,7 @@ import (
 )
 
 const getCurrencyByPath = `-- name: GetCurrencyByPath :one
-SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies WHERE item_path = ?
+SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at, category FROM currencies WHERE item_path = ?
 `
 
 func (q *Queries) GetCurrencyByPath(ctx context.Context, itemPath string) (Currency, error) {
@@ -26,12 +26,13 @@ func (q *Queries) GetCurrencyByPath(ctx context.Context, itemPath string) (Curre
 		&i.IsPlaceholder,
 		&i.DiscoveredAt,
 		&i.UpdatedAt,
+		&i.Category,
 	)
 	return i, err
 }
 
 const getCurrencyByPathForUpdate = `-- name: GetCurrencyByPathForUpdate :one
-SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies WHERE item_path = ? FOR UPDATE
+SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at, category FROM currencies WHERE item_path = ? FOR UPDATE
 `
 
 func (q *Queries) GetCurrencyByPathForUpdate(ctx context.Context, itemPath string) (Currency, error) {
@@ -46,12 +47,13 @@ func (q *Queries) GetCurrencyByPathForUpdate(ctx context.Context, itemPath strin
 		&i.IsPlaceholder,
 		&i.DiscoveredAt,
 		&i.UpdatedAt,
+		&i.Category,
 	)
 	return i, err
 }
 
 const listCurrencies = `-- name: ListCurrencies :many
-SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies ORDER BY name
+SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at, category FROM currencies ORDER BY name
 `
 
 func (q *Queries) ListCurrencies(ctx context.Context) ([]Currency, error) {
@@ -72,6 +74,7 @@ func (q *Queries) ListCurrencies(ctx context.Context) ([]Currency, error) {
 			&i.IsPlaceholder,
 			&i.DiscoveredAt,
 			&i.UpdatedAt,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -87,7 +90,7 @@ func (q *Queries) ListCurrencies(ctx context.Context) ([]Currency, error) {
 }
 
 const listPlaceholderCurrencies = `-- name: ListPlaceholderCurrencies :many
-SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at FROM currencies WHERE is_placeholder = 1 ORDER BY discovered_at DESC
+SELECT currency_id, item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at, category FROM currencies WHERE is_placeholder = 1 ORDER BY discovered_at DESC
 `
 
 func (q *Queries) ListPlaceholderCurrencies(ctx context.Context) ([]Currency, error) {
@@ -108,6 +111,7 @@ func (q *Queries) ListPlaceholderCurrencies(ctx context.Context) ([]Currency, er
 			&i.IsPlaceholder,
 			&i.DiscoveredAt,
 			&i.UpdatedAt,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -180,21 +184,23 @@ func (q *Queries) UpsertCurrencyPlaceholder(ctx context.Context, arg UpsertCurre
 }
 
 const upsertCurrencySynced = `-- name: UpsertCurrencySynced :exec
-INSERT INTO currencies (item_path, trade_id, name, emoji_id, is_placeholder, discovered_at, updated_at)
-VALUES (?, ?, ?, NULL, 0, ?, ?)
+INSERT INTO currencies (item_path, trade_id, name, emoji_id, category, is_placeholder, discovered_at, updated_at)
+VALUES (?, ?, ?, NULL, ?, 0, ?, ?)
 ON DUPLICATE KEY UPDATE
     trade_id       = VALUES(trade_id),
     name           = VALUES(name),
+    category       = VALUES(category),
     is_placeholder = 0,
     updated_at     = VALUES(updated_at)
 `
 
 type UpsertCurrencySyncedParams struct {
-	ItemPath     string `json:"item_path"`
-	TradeID      string `json:"trade_id"`
-	Name         string `json:"name"`
-	DiscoveredAt int64  `json:"discovered_at"`
-	UpdatedAt    int64  `json:"updated_at"`
+	ItemPath     string         `json:"item_path"`
+	TradeID      string         `json:"trade_id"`
+	Name         string         `json:"name"`
+	Category     sql.NullString `json:"category"`
+	DiscoveredAt int64          `json:"discovered_at"`
+	UpdatedAt    int64          `json:"updated_at"`
 }
 
 func (q *Queries) UpsertCurrencySynced(ctx context.Context, arg UpsertCurrencySyncedParams) error {
@@ -202,6 +208,7 @@ func (q *Queries) UpsertCurrencySynced(ctx context.Context, arg UpsertCurrencySy
 		arg.ItemPath,
 		arg.TradeID,
 		arg.Name,
+		arg.Category,
 		arg.DiscoveredAt,
 		arg.UpdatedAt,
 	)

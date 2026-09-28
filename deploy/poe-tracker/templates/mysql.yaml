@@ -34,21 +34,15 @@ spec:
             - containerPort: 3306
           readinessProbe:
             exec:
-              command: ["mysqladmin", "ping", "-h", "localhost"]
+              command: ["mysqladmin", "ping", "-h", "127.0.0.1"]
             periodSeconds: 5
             failureThreshold: 20
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
-            - name: schema
-              mountPath: /docker-entrypoint-initdb.d
-              readOnly: true
       volumes:
         - name: data
           emptyDir: {}
-        - name: schema
-          configMap:
-            name: {{ include "poe-tracker.fullname" . }}-mysql-schema
 ---
 apiVersion: v1
 kind: Service

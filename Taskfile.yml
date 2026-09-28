@@ -8,7 +8,6 @@ vars:
   IMAGE: poe-tg-tracker
   TAG: dev
   DEV_SECRET: poe-tracker-secrets-dev
-  MYSQL_SCHEMA_CM: "{{.RELEASE}}-mysql-schema"
   APP_DEPLOYS: "deploy/{{.RELEASE}} deploy/{{.RELEASE}}-exchange-service deploy/{{.RELEASE}}-gateway"
 
 tasks:
@@ -57,15 +56,6 @@ tasks:
           --from-literal=DB_DSN='root:{{.MYSQL_ROOT_PASSWORD}}@tcp({{.RELEASE}}-mysql:3306)/core?parseTime=false&charset=utf8mb4' \
           --dry-run=client -o yaml | kubectl apply -f -
 
-  db:schema-configmap:
-    desc: Sync the schema.sql ConfigMap the dev MySQL pod bootstraps from
-    deps: [namespace]
-    cmds:
-      - |
-        kubectl -n {{.NAMESPACE}} create configmap {{.MYSQL_SCHEMA_CM}} \
-          --from-file=schema.sql=internal/db/schema.sql \
-          --dry-run=client -o yaml | kubectl apply -f -
-
   dev:bootstrap:
     desc: Seed the dev DB (curate sync + bootstrap) — needed after every fresh dev:up, mysql's data is ephemeral (emptyDir) and doesn't survive dev:down
     cmds:
@@ -75,6 +65,15 @@ tasks:
         kubectl -n {{.NAMESPACE}} run curate-bootstrap --rm -i --restart=Never \
           --image={{.IMAGE}}:{{.TAG}} --image-pull-policy=Never \
           --overrides='{"spec":{"containers":[{"name":"curate","image":"{{.IMAGE}}:{{.TAG}}","imagePullPolicy":"Never","command":["sh","-c","./curate sync && ./curate bootstrap"],"envFrom":[{"configMapRef":{"name":"{{.RELEASE}}-config"}},{"secretRef":{"name":"{{.DEV_SECRET}}"}}]}]}}'
+
+  dev:migrate:
+    desc: Run pending goose migrations against the dev DB (a no-op when it's already up to date)
+    cmds:
+      - kubectl -n {{.NAMESPACE}} rollout status deploy/{{.RELEASE}}-mysql --timeout=120s
+      - |
+        kubectl -n {{.NAMESPACE}} run migrate-once --rm -i --restart=Never \
+          --image={{.IMAGE}}:{{.TAG}} --image-pull-policy=Never \
+          --overrides='{"spec":{"containers":[{"name":"migrate","image":"{{.IMAGE}}:{{.TAG}}","imagePullPolicy":"Never","command":["./migrate"],"envFrom":[{"configMapRef":{"name":"{{.RELEASE}}-config"}},{"secretRef":{"name":"{{.DEV_SECRET}}"}}]}]}}'
 
   dev:fetch-once:
     desc: Trigger a single manual fetcher run against the dev DB (same as prod's hourly cron)
@@ -87,7 +86,7 @@ tasks:
 
   helm:dev-install:
     desc: helm upgrade --install against minikube with dev overrides
-    deps: [docker:build, secrets:dev, db:schema-configmap]
+    deps: [docker:build, secrets:dev]
     cmds:
       - |
         helm upgrade --install {{.RELEASE}} {{.CHART}} \
@@ -97,6 +96,7 @@ tasks:
           --set image.repository={{.IMAGE}} \
           --set image.tag={{.TAG}} \
           --set existingSecret={{.DEV_SECRET}}
+      - task: dev:migrate
       - kubectl -n {{.NAMESPACE}} rollout restart {{.APP_DEPLOYS}}
 
   dev:up:
@@ -160,9 +160,8 @@ tasks:
       - |
         docker run -d --rm --name poe-mysql-test -p 3307:3306 \
           -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=core \
-          -v "{{.ROOT_DIR}}/internal/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro" \
           mysql:8.4
-      - until docker exec poe-mysql-test mysql -h127.0.0.1 -uroot -ptest -e 'SELECT 1 FROM core.currencies LIMIT 1' >/dev/null 2>&1; do sleep 1; done
+      - until docker exec poe-mysql-test mysql -h127.0.0.1 -uroot -ptest -e 'USE core' >/dev/null 2>&1; do sleep 1; done
 
   test:db-down:
     desc: Stop (and remove) the disposable test MySQL

@@ -4,6 +4,8 @@ imagePullSecrets: []
 existingSecret: poe-tracker-secrets-dev
 mysql:
   enabled: true
+migrate:
+  enabled: false
 sealedSecrets:
   enabled: false
 resources:

@@ -25,6 +25,10 @@ func newTestDB(t *testing.T) *db.DB {
 		t.Fatal("TEST_DB_DSN env required (run: task test:db)")
 	}
 
+	if _, _, err := db.Migrate(context.Background(), dsn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
 	dbase, err := db.Open(dsn)
 	if err != nil {
 		t.Fatalf("open db: %v", err)

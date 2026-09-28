@@ -12,6 +12,7 @@ config:
 migrate:
   enabled: true
   activeDeadlineSeconds: 600
+revisionHistoryLimit: 2
 fetchCron:
   schedule: "1 * * * *"
   backoffLimit: 3

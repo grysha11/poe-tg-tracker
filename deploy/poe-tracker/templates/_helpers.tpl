@@ -47,6 +47,7 @@ metadata:
     {{- include "poe-tracker.labels" $root | nindent 4 }}
 spec:
   replicas: {{ .values.replicas }}
+  revisionHistoryLimit: {{ $root.Values.revisionHistoryLimit }}
   selector:
     matchLabels:
       {{- include "poe-tracker.componentSelectorLabels" . | nindent 6 }}

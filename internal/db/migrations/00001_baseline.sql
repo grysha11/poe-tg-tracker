@@ -1,7 +1,4 @@
 -- +goose NO TRANSACTION
--- Baseline: the schema as it stood when goose was adopted. IF NOT EXISTS makes
--- this a no-op on databases created from the old schema.sql (goose just
--- records version 1), and creates everything on an empty one.
 
 -- +goose Up
 CREATE TABLE IF NOT EXISTS currencies (
@@ -52,4 +49,3 @@ CREATE TABLE IF NOT EXISTS fetch_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- +goose Down
--- Intentionally empty: never drop the baseline.

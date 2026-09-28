@@ -147,7 +147,7 @@ Start each file with `-- +goose NO TRANSACTION` (MySQL DDL auto-commits anyway) 
 
 Where it runs:
 
-- **Prod (Argo):** the `poe-tracker-migrate` Job is an Argo `PreSync` hook. Every sync runs it with the new image first; if it fails, the sync stops and the old pods keep serving. Logs: `kubectl -n poe-tracker logs job/poe-tracker-migrate`.
+- **Prod (Argo):** the `poe-tracker-migrate` Job is an Argo `PreSync` hook. Every sync runs it with the new image first; if it fails, the sync stops and the old pods keep serving. A successful Job is deleted right away; a failed one is kept until the next sync, so its logs are there: `kubectl -n poe-tracker logs job/poe-tracker-migrate`.
 - **docker compose:** the `migrate` service runs before exchange-service on every `up`.
 - **minikube:** `task dev:migrate`, which runs at the end of every `helm:dev-install` (so `dev:up` and `dev:watch` too).
 - **By hand:** `docker compose run --rm migrate`, or `go run ./cmd/migrate` with `DB_DSN` set.

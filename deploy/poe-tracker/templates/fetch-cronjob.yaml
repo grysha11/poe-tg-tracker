@@ -7,11 +7,12 @@ metadata:
 spec:
   schedule: {{ .Values.fetchCron.schedule | quote }}
   concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: {{ .Values.fetchCron.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.fetchCron.failedJobsHistoryLimit }}
   jobTemplate:
     spec:
       backoffLimit: {{ .Values.fetchCron.backoffLimit }}
+      ttlSecondsAfterFinished: {{ .Values.fetchCron.ttlSecondsAfterFinished }}
       template:
         metadata:
           labels:

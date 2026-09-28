@@ -15,6 +15,9 @@ migrate:
 fetchCron:
   schedule: "1 * * * *"
   backoffLimit: 3
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  ttlSecondsAfterFinished: 86400
 vtgate:
   serviceName: vtgate
   externalName: vitess-homelab-vtgate-43f81d05.vitess.svc.cluster.local

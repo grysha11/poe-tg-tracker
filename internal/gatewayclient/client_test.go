@@ -116,3 +116,75 @@ func TestListLeagues(t *testing.T) {
 		t.Errorf("leagues = %v", leagues)
 	}
 }
+
+func TestGetRates_RetriesUnavailable(t *testing.T) {
+	var calls int
+	client := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"code":14,"message":"upstream unavailable"}`))
+			return
+		}
+		w.Write([]byte(ratesJSON))
+	})
+
+	if _, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_VOLUME, 0); err != nil {
+		t.Fatalf("GetRates: %v", err)
+	}
+	if calls != 3 {
+		t.Errorf("calls = %d, want 3 (two 503s then success)", calls)
+	}
+}
+
+func TestGetRates_DoesNotRetryNotFound(t *testing.T) {
+	var calls int
+	client := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"code":5,"message":"nope"}`))
+	})
+
+	if _, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_VOLUME, 0); err == nil {
+		t.Fatal("GetRates succeeded, want 404 error")
+	}
+	if calls != 1 {
+		t.Errorf("calls = %d, want 1", calls)
+	}
+}
+
+func TestGetRates_GivesUpAfterMaxAttempts(t *testing.T) {
+	var calls int
+	client := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusBadGateway)
+	})
+
+	_, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_VOLUME, 0)
+	var apiErr *gatewayclient.APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusBadGateway {
+		t.Fatalf("err = %v, want *APIError 502", err)
+	}
+	if calls != 3 {
+		t.Errorf("calls = %d, want 3", calls)
+	}
+}
+
+func TestReady(t *testing.T) {
+	ready := false
+	client := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/readyz" || !ready {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	if err := client.Ready(context.Background()); err == nil {
+		t.Error("Ready = nil while gateway returns 503")
+	}
+	ready = true
+	if err := client.Ready(context.Background()); err != nil {
+		t.Errorf("Ready = %v, want nil", err)
+	}
+}

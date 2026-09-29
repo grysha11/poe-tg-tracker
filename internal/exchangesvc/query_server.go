@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -80,6 +81,10 @@ func (s *QueryServer) GetRates(ctx context.Context, req *pb.GetRatesRequest) (*p
 		ranked = exchange.RankByVolume(rows, base, limit)
 	}
 
+	slog.DebugContext(ctx, "rates resolved",
+		"league", league, "view", req.GetView().String(), "hour_utc", hourUnix,
+		"snapshot_rows", len(rows), "ranked", len(ranked), "limit", limit, "last_fetch_utc", lastFetchUnix)
+
 	return &pb.GetRatesResponse{
 		Base:         toCurrencyRef(base),
 		Rates:        toRankedRates(ranked),
@@ -100,7 +105,9 @@ func (s *QueryServer) ListLeagues(ctx context.Context, req *pb.ListLeaguesReques
 		return nil, status.Errorf(codes.Unavailable, "fetch exchange digest: %v", err)
 	}
 
-	return &pb.ListLeaguesResponse{Leagues: exchange.Leagues(d)}, nil
+	leagues := exchange.Leagues(d)
+	slog.DebugContext(ctx, "leagues resolved", "hour_utc", hour, "markets", len(d.Markets), "leagues", len(leagues))
+	return &pb.ListLeaguesResponse{Leagues: leagues}, nil
 }
 
 func (s *QueryServer) ListDefaultRatePairs(ctx context.Context, _ *pb.ListDefaultRatePairsRequest) (*pb.ListDefaultRatePairsResponse, error) {

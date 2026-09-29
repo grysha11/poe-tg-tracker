@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"math/rand/v2"
+	"net/http"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -95,6 +97,14 @@ func (p Policy) delay(attempt int) time.Duration {
 		return 0
 	}
 	return rand.N(d + 1)
+}
+
+func AfterHeader(h http.Header) time.Duration {
+	secs, err := strconv.Atoi(h.Get("Retry-After"))
+	if err != nil || secs <= 0 {
+		return 0
+	}
+	return time.Duration(secs) * time.Second
 }
 
 func outcome(err error) string {

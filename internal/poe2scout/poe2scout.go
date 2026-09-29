@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/grysha11/poe-tg-tracker/internal/retry"
@@ -78,7 +77,7 @@ func (c *Client) getOnce(ctx context.Context, path string, out any) error {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		err := fmt.Errorf("poe2scout %d: %s", resp.StatusCode, string(body))
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			return retry.RetryableAfter(err, retryAfter(resp.Header))
+			return retry.RetryableAfter(err, retry.AfterHeader(resp.Header))
 		}
 		return err
 	}
@@ -87,14 +86,6 @@ func (c *Client) getOnce(ctx context.Context, path string, out any) error {
 		return retry.Retryable(fmt.Errorf("poe2scout decode: %w", err))
 	}
 	return nil
-}
-
-func retryAfter(h http.Header) time.Duration {
-	secs, err := strconv.Atoi(h.Get("Retry-After"))
-	if err != nil || secs <= 0 {
-		return 0
-	}
-	return time.Duration(secs) * time.Second
 }
 
 func (c *Client) currencyCategories(ctx context.Context, realm, league string) ([]string, error) {

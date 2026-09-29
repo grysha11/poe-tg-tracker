@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -55,7 +54,7 @@ func (c *Client) fetchOnce(ctx context.Context, ts int64) ([]byte, error) {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		err := fmt.Errorf("exchange %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			return nil, retry.RetryableAfter(err, retryAfter(resp.Header))
+			return nil, retry.RetryableAfter(err, retry.AfterHeader(resp.Header))
 		}
 		return nil, err
 	}
@@ -131,12 +130,4 @@ func Leagues(d *Digest) []string {
 		out[i] = fmt.Sprintf("%s (%d markets)", lg, counts[lg])
 	}
 	return out
-}
-
-func retryAfter(h http.Header) time.Duration {
-	secs, err := strconv.Atoi(h.Get("Retry-After"))
-	if err != nil || secs <= 0 {
-		return 0
-	}
-	return time.Duration(secs) * time.Second
 }

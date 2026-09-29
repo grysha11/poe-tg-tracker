@@ -31,12 +31,26 @@ func currencyRatesFrom(rows []SnapshotRow, base Currency) map[string]CurrencyRat
 	return out
 }
 
-func RankByVolume(rows []SnapshotRow, base Currency, limit int) []CurrencyRate {
-	rated := currencyRatesFrom(rows, base)
+const Uncategorized = "uncategorized"
+
+type Categories map[string]bool
+
+func (c Categories) keep(cur Currency) bool {
+	return c == nil || c[cur.Category]
+}
+
+func filtered(rated map[string]CurrencyRate, cats Categories) []CurrencyRate {
 	out := make([]CurrencyRate, 0, len(rated))
 	for _, cr := range rated {
-		out = append(out, cr)
+		if cats.keep(cr.Currency) {
+			out = append(out, cr)
+		}
 	}
+	return out
+}
+
+func RankByVolume(rows []SnapshotRow, base Currency, limit int, cats Categories) []CurrencyRate {
+	out := filtered(currencyRatesFrom(rows, base), cats)
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Rate.BaseVol != out[j].Rate.BaseVol {
 			return out[i].Rate.BaseVol > out[j].Rate.BaseVol
@@ -49,7 +63,7 @@ func RankByVolume(rows []SnapshotRow, base Currency, limit int) []CurrencyRate {
 	return out
 }
 
-func RankByPrice(rows []SnapshotRow, base Currency, via []Currency, limit int) []CurrencyRate {
+func RankByPrice(rows []SnapshotRow, base Currency, via []Currency, limit int, cats Categories) []CurrencyRate {
 	direct := currencyRatesFrom(rows, base)
 
 	result := make(map[string]CurrencyRate, len(direct))
@@ -82,10 +96,7 @@ func RankByPrice(rows []SnapshotRow, base Currency, via []Currency, limit int) [
 		}
 	}
 
-	out := make([]CurrencyRate, 0, len(result))
-	for _, cr := range result {
-		out = append(out, cr)
-	}
+	out := filtered(result, cats)
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Rate.VWAP != out[j].Rate.VWAP {
 			return out[i].Rate.VWAP < out[j].Rate.VWAP

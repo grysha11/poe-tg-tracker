@@ -22,6 +22,7 @@ const (
 	ExchangeQueryService_GetRates_FullMethodName             = "/exchange.v1.ExchangeQueryService/GetRates"
 	ExchangeQueryService_ListLeagues_FullMethodName          = "/exchange.v1.ExchangeQueryService/ListLeagues"
 	ExchangeQueryService_ListDefaultRatePairs_FullMethodName = "/exchange.v1.ExchangeQueryService/ListDefaultRatePairs"
+	ExchangeQueryService_ListCategories_FullMethodName       = "/exchange.v1.ExchangeQueryService/ListCategories"
 )
 
 // ExchangeQueryServiceClient is the client API for ExchangeQueryService service.
@@ -31,6 +32,7 @@ type ExchangeQueryServiceClient interface {
 	GetRates(ctx context.Context, in *GetRatesRequest, opts ...grpc.CallOption) (*GetRatesResponse, error)
 	ListLeagues(ctx context.Context, in *ListLeaguesRequest, opts ...grpc.CallOption) (*ListLeaguesResponse, error)
 	ListDefaultRatePairs(ctx context.Context, in *ListDefaultRatePairsRequest, opts ...grpc.CallOption) (*ListDefaultRatePairsResponse, error)
+	ListCategories(ctx context.Context, in *ListCategoriesRequest, opts ...grpc.CallOption) (*ListCategoriesResponse, error)
 }
 
 type exchangeQueryServiceClient struct {
@@ -71,6 +73,16 @@ func (c *exchangeQueryServiceClient) ListDefaultRatePairs(ctx context.Context, i
 	return out, nil
 }
 
+func (c *exchangeQueryServiceClient) ListCategories(ctx context.Context, in *ListCategoriesRequest, opts ...grpc.CallOption) (*ListCategoriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCategoriesResponse)
+	err := c.cc.Invoke(ctx, ExchangeQueryService_ListCategories_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ExchangeQueryServiceServer is the server API for ExchangeQueryService service.
 // All implementations must embed UnimplementedExchangeQueryServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type ExchangeQueryServiceServer interface {
 	GetRates(context.Context, *GetRatesRequest) (*GetRatesResponse, error)
 	ListLeagues(context.Context, *ListLeaguesRequest) (*ListLeaguesResponse, error)
 	ListDefaultRatePairs(context.Context, *ListDefaultRatePairsRequest) (*ListDefaultRatePairsResponse, error)
+	ListCategories(context.Context, *ListCategoriesRequest) (*ListCategoriesResponse, error)
 	mustEmbedUnimplementedExchangeQueryServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedExchangeQueryServiceServer) ListLeagues(context.Context, *Lis
 }
 func (UnimplementedExchangeQueryServiceServer) ListDefaultRatePairs(context.Context, *ListDefaultRatePairsRequest) (*ListDefaultRatePairsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListDefaultRatePairs not implemented")
+}
+func (UnimplementedExchangeQueryServiceServer) ListCategories(context.Context, *ListCategoriesRequest) (*ListCategoriesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCategories not implemented")
 }
 func (UnimplementedExchangeQueryServiceServer) mustEmbedUnimplementedExchangeQueryServiceServer() {}
 func (UnimplementedExchangeQueryServiceServer) testEmbeddedByValue()                              {}
@@ -172,6 +188,24 @@ func _ExchangeQueryService_ListDefaultRatePairs_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ExchangeQueryService_ListCategories_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCategoriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExchangeQueryServiceServer).ListCategories(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ExchangeQueryService_ListCategories_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExchangeQueryServiceServer).ListCategories(ctx, req.(*ListCategoriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ExchangeQueryService_ServiceDesc is the grpc.ServiceDesc for ExchangeQueryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var ExchangeQueryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListDefaultRatePairs",
 			Handler:    _ExchangeQueryService_ListDefaultRatePairs_Handler,
+		},
+		{
+			MethodName: "ListCategories",
+			Handler:    _ExchangeQueryService_ListCategories_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

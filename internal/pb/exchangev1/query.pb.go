@@ -7,12 +7,13 @@
 package exchangev1
 
 import (
-	_ "google.golang.org/genproto/googleapis/api/annotations"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	_ "google.golang.org/genproto/googleapis/api/annotations"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -136,6 +137,7 @@ type GetRatesRequest struct {
 	League        string                 `protobuf:"bytes,1,opt,name=league,proto3" json:"league,omitempty"`
 	View          RateView               `protobuf:"varint,2,opt,name=view,proto3,enum=exchange.v1.RateView" json:"view,omitempty"`
 	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Categories    []string               `protobuf:"bytes,4,rep,name=categories,proto3" json:"categories,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -189,6 +191,13 @@ func (x *GetRatesRequest) GetLimit() int32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *GetRatesRequest) GetCategories() []string {
+	if x != nil {
+		return x.Categories
+	}
+	return nil
 }
 
 type RankedRate struct {
@@ -587,6 +596,86 @@ func (x *ListDefaultRatePairsResponse) GetPairs() []*DefaultRatePair {
 	return nil
 }
 
+type ListCategoriesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCategoriesRequest) Reset() {
+	*x = ListCategoriesRequest{}
+	mi := &file_exchange_v1_query_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCategoriesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCategoriesRequest) ProtoMessage() {}
+
+func (x *ListCategoriesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_exchange_v1_query_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCategoriesRequest.ProtoReflect.Descriptor instead.
+func (*ListCategoriesRequest) Descriptor() ([]byte, []int) {
+	return file_exchange_v1_query_proto_rawDescGZIP(), []int{9}
+}
+
+type ListCategoriesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Categories    []string               `protobuf:"bytes,1,rep,name=categories,proto3" json:"categories,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCategoriesResponse) Reset() {
+	*x = ListCategoriesResponse{}
+	mi := &file_exchange_v1_query_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCategoriesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCategoriesResponse) ProtoMessage() {}
+
+func (x *ListCategoriesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_exchange_v1_query_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCategoriesResponse.ProtoReflect.Descriptor instead.
+func (*ListCategoriesResponse) Descriptor() ([]byte, []int) {
+	return file_exchange_v1_query_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ListCategoriesResponse) GetCategories() []string {
+	if x != nil {
+		return x.Categories
+	}
+	return nil
+}
+
 var File_exchange_v1_query_proto protoreflect.FileDescriptor
 
 const file_exchange_v1_query_proto_rawDesc = "" +
@@ -595,11 +684,14 @@ const file_exchange_v1_query_proto_rawDesc = "" +
 	"\vCurrencyRef\x12\x1b\n" +
 	"\titem_path\x18\x01 \x01(\tR\bitemPath\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x19\n" +
-	"\btrade_id\x18\x03 \x01(\tR\atradeId\"j\n" +
+	"\btrade_id\x18\x03 \x01(\tR\atradeId\"\x8a\x01\n" +
 	"\x0fGetRatesRequest\x12\x16\n" +
 	"\x06league\x18\x01 \x01(\tR\x06league\x12)\n" +
 	"\x04view\x18\x02 \x01(\x0e2\x15.exchange.v1.RateViewR\x04view\x12\x14\n" +
-	"\x05limit\x18\x03 \x01(\x05R\x05limit\"\xec\x01\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x1e\n" +
+	"\n" +
+	"categories\x18\x04 \x03(\tR\n" +
+	"categories\"\xec\x01\n" +
 	"\n" +
 	"RankedRate\x124\n" +
 	"\bcurrency\x18\x01 \x01(\v2\x18.exchange.v1.CurrencyRefR\bcurrency\x12\x12\n" +
@@ -627,15 +719,21 @@ const file_exchange_v1_query_proto_rawDesc = "" +
 	"\n" +
 	"sort_order\x18\x03 \x01(\x05R\tsortOrder\"R\n" +
 	"\x1cListDefaultRatePairsResponse\x122\n" +
-	"\x05pairs\x18\x01 \x03(\v2\x1c.exchange.v1.DefaultRatePairR\x05pairs*P\n" +
+	"\x05pairs\x18\x01 \x03(\v2\x1c.exchange.v1.DefaultRatePairR\x05pairs\"\x17\n" +
+	"\x15ListCategoriesRequest\"8\n" +
+	"\x16ListCategoriesResponse\x12\x1e\n" +
+	"\n" +
+	"categories\x18\x01 \x03(\tR\n" +
+	"categories*P\n" +
 	"\bRateView\x12\x19\n" +
 	"\x15RATE_VIEW_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10RATE_VIEW_VOLUME\x10\x01\x12\x13\n" +
-	"\x0fRATE_VIEW_PRICE\x10\x022\xe7\x02\n" +
+	"\x0fRATE_VIEW_PRICE\x10\x022\xda\x03\n" +
 	"\x14ExchangeQueryService\x12Z\n" +
 	"\bGetRates\x12\x1c.exchange.v1.GetRatesRequest\x1a\x1d.exchange.v1.GetRatesResponse\"\x11\x82\xd3\xe4\x93\x02\v\x12\t/v1/rates\x12e\n" +
 	"\vListLeagues\x12\x1f.exchange.v1.ListLeaguesRequest\x1a .exchange.v1.ListLeaguesResponse\"\x13\x82\xd3\xe4\x93\x02\r\x12\v/v1/leagues\x12\x8b\x01\n" +
-	"\x14ListDefaultRatePairs\x12(.exchange.v1.ListDefaultRatePairsRequest\x1a).exchange.v1.ListDefaultRatePairsResponse\"\x1e\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/rate-pairs/defaultBFZDgithub.com/grysha11/poe-tg-tracker/internal/pb/exchangev1;exchangev1b\x06proto3"
+	"\x14ListDefaultRatePairs\x12(.exchange.v1.ListDefaultRatePairsRequest\x1a).exchange.v1.ListDefaultRatePairsResponse\"\x1e\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/rate-pairs/default\x12q\n" +
+	"\x0eListCategories\x12\".exchange.v1.ListCategoriesRequest\x1a#.exchange.v1.ListCategoriesResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/categoriesBFZDgithub.com/grysha11/poe-tg-tracker/internal/pb/exchangev1;exchangev1b\x06proto3"
 
 var (
 	file_exchange_v1_query_proto_rawDescOnce sync.Once
@@ -649,20 +747,25 @@ func file_exchange_v1_query_proto_rawDescGZIP() []byte {
 	return file_exchange_v1_query_proto_rawDescData
 }
 
-var file_exchange_v1_query_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_exchange_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
-var file_exchange_v1_query_proto_goTypes = []any{
-	(RateView)(0),                        // 0: exchange.v1.RateView
-	(*CurrencyRef)(nil),                  // 1: exchange.v1.CurrencyRef
-	(*GetRatesRequest)(nil),              // 2: exchange.v1.GetRatesRequest
-	(*RankedRate)(nil),                   // 3: exchange.v1.RankedRate
-	(*GetRatesResponse)(nil),             // 4: exchange.v1.GetRatesResponse
-	(*ListLeaguesRequest)(nil),           // 5: exchange.v1.ListLeaguesRequest
-	(*ListLeaguesResponse)(nil),          // 6: exchange.v1.ListLeaguesResponse
-	(*ListDefaultRatePairsRequest)(nil),  // 7: exchange.v1.ListDefaultRatePairsRequest
-	(*DefaultRatePair)(nil),              // 8: exchange.v1.DefaultRatePair
-	(*ListDefaultRatePairsResponse)(nil), // 9: exchange.v1.ListDefaultRatePairsResponse
-}
+var (
+	file_exchange_v1_query_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+	file_exchange_v1_query_proto_msgTypes  = make([]protoimpl.MessageInfo, 11)
+	file_exchange_v1_query_proto_goTypes   = []any{
+		RateView(0),                          // 0: exchange.v1.RateView
+		(*CurrencyRef)(nil),                  // 1: exchange.v1.CurrencyRef
+		(*GetRatesRequest)(nil),              // 2: exchange.v1.GetRatesRequest
+		(*RankedRate)(nil),                   // 3: exchange.v1.RankedRate
+		(*GetRatesResponse)(nil),             // 4: exchange.v1.GetRatesResponse
+		(*ListLeaguesRequest)(nil),           // 5: exchange.v1.ListLeaguesRequest
+		(*ListLeaguesResponse)(nil),          // 6: exchange.v1.ListLeaguesResponse
+		(*ListDefaultRatePairsRequest)(nil),  // 7: exchange.v1.ListDefaultRatePairsRequest
+		(*DefaultRatePair)(nil),              // 8: exchange.v1.DefaultRatePair
+		(*ListDefaultRatePairsResponse)(nil), // 9: exchange.v1.ListDefaultRatePairsResponse
+		(*ListCategoriesRequest)(nil),        // 10: exchange.v1.ListCategoriesRequest
+		(*ListCategoriesResponse)(nil),       // 11: exchange.v1.ListCategoriesResponse
+	}
+)
+
 var file_exchange_v1_query_proto_depIdxs = []int32{
 	0,  // 0: exchange.v1.GetRatesRequest.view:type_name -> exchange.v1.RateView
 	1,  // 1: exchange.v1.RankedRate.currency:type_name -> exchange.v1.CurrencyRef
@@ -675,11 +778,13 @@ var file_exchange_v1_query_proto_depIdxs = []int32{
 	2,  // 8: exchange.v1.ExchangeQueryService.GetRates:input_type -> exchange.v1.GetRatesRequest
 	5,  // 9: exchange.v1.ExchangeQueryService.ListLeagues:input_type -> exchange.v1.ListLeaguesRequest
 	7,  // 10: exchange.v1.ExchangeQueryService.ListDefaultRatePairs:input_type -> exchange.v1.ListDefaultRatePairsRequest
-	4,  // 11: exchange.v1.ExchangeQueryService.GetRates:output_type -> exchange.v1.GetRatesResponse
-	6,  // 12: exchange.v1.ExchangeQueryService.ListLeagues:output_type -> exchange.v1.ListLeaguesResponse
-	9,  // 13: exchange.v1.ExchangeQueryService.ListDefaultRatePairs:output_type -> exchange.v1.ListDefaultRatePairsResponse
-	11, // [11:14] is the sub-list for method output_type
-	8,  // [8:11] is the sub-list for method input_type
+	10, // 11: exchange.v1.ExchangeQueryService.ListCategories:input_type -> exchange.v1.ListCategoriesRequest
+	4,  // 12: exchange.v1.ExchangeQueryService.GetRates:output_type -> exchange.v1.GetRatesResponse
+	6,  // 13: exchange.v1.ExchangeQueryService.ListLeagues:output_type -> exchange.v1.ListLeaguesResponse
+	9,  // 14: exchange.v1.ExchangeQueryService.ListDefaultRatePairs:output_type -> exchange.v1.ListDefaultRatePairsResponse
+	11, // 15: exchange.v1.ExchangeQueryService.ListCategories:output_type -> exchange.v1.ListCategoriesResponse
+	12, // [12:16] is the sub-list for method output_type
+	8,  // [8:12] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -696,7 +801,7 @@ func file_exchange_v1_query_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exchange_v1_query_proto_rawDesc), len(file_exchange_v1_query_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

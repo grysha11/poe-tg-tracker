@@ -20,11 +20,19 @@ func formatValue(v float64) string {
 	}
 }
 
-func formatRanked(view rateView, resp *pb.GetRatesResponse) string {
+func formatRanked(view rateView, resp *pb.GetRatesResponse, categories []string) string {
 	var b strings.Builder
 	base := resp.GetBase()
 
-	fmt.Fprintf(&b, "%s <b>%s — %s</b>\n\n", view.icon, view.title, resp.GetLeague())
+	fmt.Fprintf(&b, "%s <b>%s — %s</b>\n", view.icon, view.title, resp.GetLeague())
+	if len(categories) > 0 {
+		labels := make([]string, len(categories))
+		for i, c := range categories {
+			labels[i] = categoryLabel(c)
+		}
+		fmt.Fprintf(&b, "<i>Categories: %s</i>\n", strings.Join(labels, ", "))
+	}
+	b.WriteString("\n")
 
 	if len(resp.GetRates()) == 0 {
 		b.WriteString("No data for this hour yet.\n\n")

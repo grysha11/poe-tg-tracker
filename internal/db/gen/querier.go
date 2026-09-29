@@ -6,6 +6,7 @@ package dbgen
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
@@ -17,6 +18,7 @@ type Querier interface {
 	LatestFetch(ctx context.Context) (FetchLog, error)
 	LatestFetchBefore(ctx context.Context, hourUtc int64) (FetchLog, error)
 	LatestSnapshotHour(ctx context.Context, league string) (int64, error)
+	ListCategories(ctx context.Context) ([]sql.NullString, error)
 	ListCurrencies(ctx context.Context) ([]Currency, error)
 	ListDefaultRatePairs(ctx context.Context) ([]ListDefaultRatePairsRow, error)
 	ListPlaceholderCurrencies(ctx context.Context) ([]Currency, error)

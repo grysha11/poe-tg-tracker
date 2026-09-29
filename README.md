@@ -60,9 +60,10 @@ list.
 `gateway` is the REST/JSON front door for clients (bot today; Discord bot, website, desktop app later). It proxies to exchange-service over gRPC via grpc-gateway, generated from `proto/exchange/v1/query.proto`:
 
 ```
-GET /v1/rates?league=<league>&view=RATE_VIEW_VOLUME|RATE_VIEW_PRICE&limit=<n>
+GET /v1/rates?league=<league>&view=RATE_VIEW_VOLUME|RATE_VIEW_PRICE&limit=<n>&categories=<category>...
 GET /v1/leagues
 GET /v1/rate-pairs/default
+GET /v1/categories
 GET /healthz   # liveness
 GET /readyz    # readiness: exchange-service's gRPC health
 ```

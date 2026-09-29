@@ -7,12 +7,13 @@ package dbgen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const listSnapshotRatesForHour = `-- name: ListSnapshotRatesForHour :many
 SELECT
-    a.item_path AS item_a_path, a.name AS item_a_name, a.trade_id AS item_a_trade_id,
-    b.item_path AS item_b_path, b.name AS item_b_name, b.trade_id AS item_b_trade_id,
+    a.item_path AS item_a_path, a.name AS item_a_name, a.trade_id AS item_a_trade_id, a.category AS item_a_category,
+    b.item_path AS item_b_path, b.name AS item_b_name, b.trade_id AS item_b_trade_id, b.category AS item_b_category,
     ms.volume_a, ms.volume_b,
     ms.lowest_ratio_a, ms.lowest_ratio_b,
     ms.highest_ratio_a, ms.highest_ratio_b
@@ -29,18 +30,20 @@ type ListSnapshotRatesForHourParams struct {
 }
 
 type ListSnapshotRatesForHourRow struct {
-	ItemAPath     string `json:"item_a_path"`
-	ItemAName     string `json:"item_a_name"`
-	ItemATradeID  string `json:"item_a_trade_id"`
-	ItemBPath     string `json:"item_b_path"`
-	ItemBName     string `json:"item_b_name"`
-	ItemBTradeID  string `json:"item_b_trade_id"`
-	VolumeA       int64  `json:"volume_a"`
-	VolumeB       int64  `json:"volume_b"`
-	LowestRatioA  int64  `json:"lowest_ratio_a"`
-	LowestRatioB  int64  `json:"lowest_ratio_b"`
-	HighestRatioA int64  `json:"highest_ratio_a"`
-	HighestRatioB int64  `json:"highest_ratio_b"`
+	ItemAPath     string         `json:"item_a_path"`
+	ItemAName     string         `json:"item_a_name"`
+	ItemATradeID  string         `json:"item_a_trade_id"`
+	ItemACategory sql.NullString `json:"item_a_category"`
+	ItemBPath     string         `json:"item_b_path"`
+	ItemBName     string         `json:"item_b_name"`
+	ItemBTradeID  string         `json:"item_b_trade_id"`
+	ItemBCategory sql.NullString `json:"item_b_category"`
+	VolumeA       int64          `json:"volume_a"`
+	VolumeB       int64          `json:"volume_b"`
+	LowestRatioA  int64          `json:"lowest_ratio_a"`
+	LowestRatioB  int64          `json:"lowest_ratio_b"`
+	HighestRatioA int64          `json:"highest_ratio_a"`
+	HighestRatioB int64          `json:"highest_ratio_b"`
 }
 
 func (q *Queries) ListSnapshotRatesForHour(ctx context.Context, arg ListSnapshotRatesForHourParams) ([]ListSnapshotRatesForHourRow, error) {
@@ -56,9 +59,11 @@ func (q *Queries) ListSnapshotRatesForHour(ctx context.Context, arg ListSnapshot
 			&i.ItemAPath,
 			&i.ItemAName,
 			&i.ItemATradeID,
+			&i.ItemACategory,
 			&i.ItemBPath,
 			&i.ItemBName,
 			&i.ItemBTradeID,
+			&i.ItemBCategory,
 			&i.VolumeA,
 			&i.VolumeB,
 			&i.LowestRatioA,

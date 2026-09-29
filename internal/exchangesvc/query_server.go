@@ -70,20 +70,28 @@ func (s *QueryServer) GetRates(ctx context.Context, req *pb.GetRatesRequest) (*p
 		return nil, status.Errorf(codes.Internal, "latest fetch: %v", err)
 	}
 
+	var cats exchange.Categories
+	if len(req.GetCategories()) > 0 {
+		cats = exchange.Categories{}
+		for _, c := range req.GetCategories() {
+			cats[c] = true
+		}
+	}
+
 	var ranked []exchange.CurrencyRate
 	if req.GetView() == pb.RateView_RATE_VIEW_PRICE {
 		quotes := make([]exchange.Currency, 0, len(pairs))
 		for _, p := range pairs {
 			quotes = append(quotes, p.quote)
 		}
-		ranked = exchange.RankByPrice(rows, base, quotes, limit)
+		ranked = exchange.RankByPrice(rows, base, quotes, limit, cats)
 	} else {
-		ranked = exchange.RankByVolume(rows, base, limit)
+		ranked = exchange.RankByVolume(rows, base, limit, cats)
 	}
 
 	slog.DebugContext(ctx, "rates resolved",
 		"league", league, "view", req.GetView().String(), "hour_utc", hourUnix,
-		"snapshot_rows", len(rows), "ranked", len(ranked), "limit", limit, "last_fetch_utc", lastFetchUnix)
+		"snapshot_rows", len(rows), "ranked", len(ranked), "limit", limit, "categories", req.GetCategories(), "last_fetch_utc", lastFetchUnix)
 
 	return &pb.GetRatesResponse{
 		Base:         toCurrencyRef(base),
@@ -116,6 +124,28 @@ func (s *QueryServer) ListDefaultRatePairs(ctx context.Context, _ *pb.ListDefaul
 		return nil, err
 	}
 	return &pb.ListDefaultRatePairsResponse{Pairs: toDefaultRatePairs(pairs)}, nil
+}
+
+func (s *QueryServer) ListCategories(ctx context.Context, _ *pb.ListCategoriesRequest) (*pb.ListCategoriesResponse, error) {
+	rows, err := s.Q.ListCategories(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list categories: %v", err)
+	}
+
+	cats := make([]string, 0, len(rows))
+	uncategorized := false
+	for _, r := range rows {
+		c := categoryFromDB(r)
+		if c == exchange.Uncategorized {
+			uncategorized = true
+			continue
+		}
+		cats = append(cats, c)
+	}
+	if uncategorized {
+		cats = append(cats, exchange.Uncategorized)
+	}
+	return &pb.ListCategoriesResponse{Categories: cats}, nil
 }
 
 // loadRatePairs returns gRPC status errors so handlers can pass them through.

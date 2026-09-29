@@ -10,12 +10,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/grysha11/poe-tg-tracker/internal/retry"
+	"github.com/grysha11/poe-tg-tracker/internal/telemetry"
 )
 
 const apiBase = "https://api.poe2scout.com"
+
+var pagePolicy = retry.Policy{Attempts: 4, Base: 500 * time.Millisecond, Max: 8 * time.Second}
 
 type Client struct {
 	HTTP      *http.Client
@@ -23,7 +29,7 @@ type Client struct {
 }
 
 func NewClient(userAgent string) *Client {
-	return &Client{HTTP: &http.Client{Timeout: 30 * time.Second}, UserAgent: userAgent}
+	return &Client{HTTP: telemetry.HTTPClient("poe2scout", 30*time.Second), UserAgent: userAgent}
 }
 
 type CurrencyItem struct {
@@ -44,7 +50,13 @@ type byCategoryResponse struct {
 	Items []CurrencyItem `json:"Items"`
 }
 
-func (c *Client) get(ctx context.Context, path string, out interface{}) error {
+func (c *Client) get(ctx context.Context, path string, out any) error {
+	return retry.Do(ctx, "poe2scout", pagePolicy, func(ctx context.Context) error {
+		return c.getOnce(ctx, path, out)
+	})
+}
+
+func (c *Client) getOnce(ctx context.Context, path string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiBase+path, nil)
 	if err != nil {
 		return err
@@ -55,7 +67,7 @@ func (c *Client) get(ctx context.Context, path string, out interface{}) error {
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return err
+		return retry.Retryable(err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -63,10 +75,17 @@ func (c *Client) get(ctx context.Context, path string, out interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("poe2scout %d: %s", resp.StatusCode, string(body))
+		err := fmt.Errorf("poe2scout %d: %s", resp.StatusCode, string(body))
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return retry.RetryableAfter(err, retry.AfterHeader(resp.Header))
+		}
+		return err
 	}
 
-	return json.NewDecoder(resp.Body).Decode(out)
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return retry.Retryable(fmt.Errorf("poe2scout decode: %w", err))
+	}
+	return nil
 }
 
 func (c *Client) currencyCategories(ctx context.Context, realm, league string) ([]string, error) {
@@ -89,6 +108,9 @@ func (c *Client) AllCurrencyItems(ctx context.Context, realm, league string) ([]
 		return nil, fmt.Errorf("list categories: %w", err)
 	}
 
+	slog.DebugContext(ctx, "poe2scout categories", "realm", realm, "league", league, "count", len(categories))
+
+	start := time.Now()
 	var all []CurrencyItem
 	for _, category := range categories {
 		for page := 1; ; page++ {
@@ -100,10 +122,12 @@ func (c *Client) AllCurrencyItems(ctx context.Context, realm, league string) ([]
 			}
 
 			all = append(all, out.Items...)
+			slog.DebugContext(ctx, "poe2scout page", "category", category, "page", page, "pages", out.Pages, "items", len(out.Items))
 			if page >= out.Pages || out.Pages == 0 {
 				break
 			}
 		}
 	}
+	slog.InfoContext(ctx, "poe2scout currencies fetched", "realm", realm, "league", league, "categories", len(categories), "items", len(all), "dur", time.Since(start))
 	return all, nil
 }

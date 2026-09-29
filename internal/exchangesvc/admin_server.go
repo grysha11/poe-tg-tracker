@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"sort"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -47,6 +50,7 @@ func (s *AdminServer) ListPlaceholderCurrencies(ctx context.Context, _ *pb.ListP
 			DiscoveredAt: r.DiscoveredAt,
 		})
 	}
+	slog.InfoContext(ctx, "listed placeholder currencies", "count", len(out))
 	return &pb.ListPlaceholderCurrenciesResponse{Currencies: out}, nil
 }
 
@@ -71,6 +75,7 @@ func (s *AdminServer) CurateCurrency(ctx context.Context, req *pb.CurateCurrency
 	}); err != nil {
 		return nil, status.Errorf(codes.Internal, "upsert curated currency: %v", err)
 	}
+	slog.InfoContext(ctx, "currency curated", "item_path", req.GetItemPath(), "trade_id", req.GetTradeId(), "name", req.GetName(), "emoji", req.GetEmojiId() != "")
 	return &pb.CurateCurrencyResponse{}, nil
 }
 
@@ -83,6 +88,9 @@ func (s *AdminServer) SyncCurrenciesFromScout(ctx context.Context, req *pb.SyncC
 	if league == "" {
 		league = s.DefaultLeague
 	}
+
+	start := time.Now()
+	slog.InfoContext(ctx, "scout sync started", "realm", realm, "league", league)
 
 	items, err := s.Scout.AllCurrencyItems(ctx, realm, league)
 	if err != nil {
@@ -121,6 +129,11 @@ func (s *AdminServer) SyncCurrenciesFromScout(ctx context.Context, req *pb.SyncC
 		}
 	}
 
+	scoutSyncTotal.Add(ctx, int64(len(rows)), metric.WithAttributes(attribute.String("result", "synced")))
+	scoutSyncTotal.Add(ctx, int64(skipped), metric.WithAttributes(attribute.String("result", "skipped")))
+	slog.InfoContext(ctx, "scout sync finished", "realm", realm, "league", league,
+		"items", len(items), "synced", len(rows), "skipped", skipped, "dur", time.Since(start))
+
 	return &pb.SyncCurrenciesFromScoutResponse{SyncedCount: int32(len(rows)), SkippedCount: skipped}, nil
 }
 
@@ -153,6 +166,7 @@ func (s *AdminServer) BootstrapDefaultRatePairs(ctx context.Context, req *pb.Boo
 			return nil, status.Errorf(codes.Internal, "upsert default rate pair %s: %v", path, err)
 		}
 		pairs = append(pairs, ratePair{base: currencyFromDB(base), quote: currencyFromDB(quote), sortOrder: int32(i)})
+		slog.InfoContext(ctx, "default rate pair upserted", "base", basePath, "quote", path, "sort_order", i)
 	}
 	return &pb.BootstrapDefaultRatePairsResponse{Pairs: toDefaultRatePairs(pairs)}, nil
 }

@@ -71,6 +71,59 @@ All params are optional (league defaults to `POE_LEAGUE`, view to volume, limit 
 
 No auth yet: the Service is ClusterIP-only and compose binds it to `127.0.0.1`. Add auth before exposing it to anything outside the cluster.
 
+## Observability
+
+All binaries go through `internal/telemetry` (OpenTelemetry SDK).
+
+### Logs
+
+JSON on stdout, always, so `kubectl logs` and Argo CD keep working. Every line carries `service` and `service_version` (the image tag). `curate` writes its logs to stderr so its table output stays clean.
+
+When `OTEL_EXPORTER_OTLP_ENDPOINT` is set (chart: `otel.endpoint`, e.g. `http://alloy.<namespace>.svc:4317`), the same records are also exported over OTLP/gRPC to the collector (Loki). Don't let the collector tail these pods' stdout as well, or every line lands twice.
+
+`LOG_LEVEL`: `debug` adds per-request detail (outbound HTTP calls, Telegram API calls, resolved rates, poe2scout pages, health checks, probes). `info` is lifecycle and business events, `warn` is retries and rejected requests, `error` is failed operations.
+
+### Metrics
+
+Prometheus format on `:9464/metrics` (`METRICS_LISTEN_ADDR`) for bot, exchange-service and gateway. The chart creates ServiceMonitors (exchange-service, gateway) and a PodMonitor (bot) when `metrics.serviceMonitor.enabled`; `metrics.serviceMonitor.labels` must match the Prometheus `serviceMonitorSelector` / `podMonitorSelector`:
+
+```
+kubectl get prometheus -A -o jsonpath='{range .items[*]}{.spec.serviceMonitorSelector}{"\n"}{end}'
+```
+
+| Metric | From |
+|---|---|
+| `rpc_server_call_duration_seconds` | exchange-service, by `rpc_method` and status code |
+| `rpc_client_call_duration_seconds` | gateway → exchange-service |
+| `http_server_request_duration_seconds` | gateway REST API (probes excluded) |
+| `http_client_request_duration_seconds` | outbound HTTP: bot → gateway, exchange API, poe2scout |
+| `db_client_operation_duration_seconds` | every SQL call, `db_query_name` = sqlc query name |
+| `db_sql_connection_*` | connection pool |
+| `poetracker_last_fetch_timestamp_seconds` | last successful fetcher run, read from `fetch_log` at scrape time |
+| `poetracker_latest_snapshot_hour_seconds` | newest snapshot hour for `POE_LEAGUE` |
+| `poetracker_placeholder_currencies` | currencies awaiting `curate` |
+| `poetracker_scout_sync_currencies_total` | `curate sync` results |
+| `poetracker_bot_commands_total`, `poetracker_bot_callbacks_total`, `poetracker_bot_rejected_total`, `poetracker_bot_getupdates_errors_total` | bot usage |
+| `poetracker_telegram_requests_total`, `poetracker_telegram_request_duration_seconds` | Telegram Bot API, by method |
+| `poetracker_retries_total` | retries by `client` and `outcome` (`retry`, `recovered`, `exhausted`) |
+
+The fetcher is a short-lived CronJob, so it isn't scraped: alert on `time() - poetracker_last_fetch_timestamp_seconds > 7200` instead.
+
+### Probes
+
+- **exchange-service**: readiness is the default gRPC health service, `SERVING` only while a DB ping (every 10s) succeeds. Liveness is the `liveness` health service, which stays up during a DB outage, so the pod leaves the Service instead of restarting.
+- **gateway**: `/readyz` checks exchange-service health (and so the DB), `/healthz` is process-only.
+- **bot**: on `:9464`. `/healthz` fails only if the poll loop stalls for 3 minutes; a Telegram outage never restarts it. `/readyz` needs a successful `getUpdates` in the last 3 minutes and a ready gateway.
+
+### Retries
+
+- **DB connect**: every binary retries the initial ping for up to `DB_CONNECT_TIMEOUT` (default `60s`), so `migrate` and the services survive MySQL/vtgate starting late.
+- **gRPC** (gateway, curate → exchange-service): up to 4 attempts on `UNAVAILABLE`, except `ListLeagues` and `SyncCurrenciesFromScout`, which already retry their upstream. `curate` also waits for the connection to become ready.
+- **gateway client** (bot): 3 attempts on network errors and 502/503/504.
+- **poe2scout**: 4 attempts per page on network errors, 429 and 5xx, honoring `Retry-After`.
+- **exchange API**: 3 attempts in exchange-service (`ListLeagues`); the fetcher keeps its own 6-attempt loop.
+- **Telegram**: `getUpdates` backs off exponentially up to 60s. Sends retry only on 429 (honoring `retry_after`) and 5xx, never after a dropped connection, so users never get a message twice.
+
 ## Fetcher (manual run)
 
 Normally runs on cron. To trigger a fetch now instead of waiting:

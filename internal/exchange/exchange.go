@@ -9,18 +9,31 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/grysha11/poe-tg-tracker/internal/retry"
+	"github.com/grysha11/poe-tg-tracker/internal/telemetry"
 )
 
 const apiBase = "https://web.poecdn.com/api/currency-exchange/poe2"
 
 func NewClient(userAgent string) *Client {
 	return &Client{
-		HTTP:      &http.Client{Timeout: 30 * time.Second},
+		HTTP:      telemetry.HTTPClient("poe-exchange", 30*time.Second),
 		UserAgent: userAgent,
 	}
 }
 
 func (c *Client) FetchRaw(ctx context.Context, ts int64) ([]byte, error) {
+	var raw []byte
+	err := retry.Do(ctx, "poe-exchange", c.Retry, func(ctx context.Context) error {
+		var err error
+		raw, err = c.fetchOnce(ctx, ts)
+		return err
+	})
+	return raw, err
+}
+
+func (c *Client) fetchOnce(ctx context.Context, ts int64) ([]byte, error) {
 	url := fmt.Sprintf("%s/%d", apiBase, ts)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -31,7 +44,7 @@ func (c *Client) FetchRaw(ctx context.Context, ts int64) ([]byte, error) {
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, retry.Retryable(err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -39,10 +52,18 @@ func (c *Client) FetchRaw(ctx context.Context, ts int64) ([]byte, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("exchange %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+		err := fmt.Errorf("exchange %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return nil, retry.RetryableAfter(err, retry.AfterHeader(resp.Header))
+		}
+		return nil, err
 	}
 
-	return io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, retry.Retryable(fmt.Errorf("exchange: read body: %w", err))
+	}
+	return raw, nil
 }
 
 func (c *Client) Fetch(ctx context.Context, ts int64) (*Digest, error) {

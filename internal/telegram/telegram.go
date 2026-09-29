@@ -4,22 +4,63 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
+	"github.com/grysha11/poe-tg-tracker/internal/retry"
 )
+
+const (
+	apiBase     = "https://api.telegram.org"
+	maxRespBody = 8 << 20
+)
+
+var sendPolicy = retry.Policy{Attempts: 3, Base: 500 * time.Millisecond, Max: 5 * time.Second}
+
+var (
+	requestsTotal   metric.Int64Counter
+	requestDuration metric.Float64Histogram
+)
+
+func init() {
+	meter := otel.Meter("poetracker/telegram")
+	var err error
+	requestsTotal, err = meter.Int64Counter("poetracker.telegram.requests",
+		metric.WithDescription("Telegram Bot API calls by method and HTTP status (\"error\" when no response)."))
+	if err != nil {
+		otel.Handle(err)
+	}
+	requestDuration, err = meter.Float64Histogram("poetracker.telegram.request.duration",
+		metric.WithUnit("s"),
+		metric.WithDescription("Telegram Bot API call latency, including getUpdates long polls."),
+		metric.WithExplicitBucketBoundaries(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60))
+	if err != nil {
+		otel.Handle(err)
+	}
+}
 
 type Bot struct {
 	token string
+	base  string
 	http  *http.Client
 }
 
 func NewBot(token string) *Bot {
 	return &Bot{
 		token: token,
+		base:  apiBase,
 		http:  &http.Client{Timeout: 65 * time.Second},
 	}
 }
@@ -52,12 +93,6 @@ type Update struct {
 	CallbackQuery *CallbackQuery `json:"callback_query"`
 }
 
-type updatesResponse struct {
-	OK          bool     `json:"ok"`
-	Result      []Update `json:"result"`
-	Description string   `json:"description"`
-}
-
 type InlineKeyboardButton struct {
 	Text         string `json:"text"`
 	CallbackData string `json:"callback_data,omitempty"`
@@ -67,66 +102,127 @@ type InlineKeyboardMarkup struct {
 	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
 }
 
-func (b *Bot) api(method string) string {
-	return fmt.Sprintf("https://api.telegram.org/bot%s/%s", b.token, method)
+type APIError struct {
+	Method      string
+	Status      int
+	Description string
+	RetryAfter  time.Duration
 }
 
-func (b *Bot) post(ctx context.Context, method string, payload any) ([]byte, error) {
+func (e *APIError) Error() string {
+	return fmt.Sprintf("telegram %s: %d %s", e.Method, e.Status, e.Description)
+}
+
+type apiResponse struct {
+	OK          bool            `json:"ok"`
+	Result      json.RawMessage `json:"result"`
+	ErrorCode   int             `json:"error_code"`
+	Description string          `json:"description"`
+	Parameters  *struct {
+		RetryAfter int `json:"retry_after"`
+	} `json:"parameters"`
+}
+
+func (b *Bot) do(ctx context.Context, method string, payload any) (json.RawMessage, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("telegram %s: encode: %w", method, err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.api(method), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.base+"/bot"+b.token+"/"+method, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("telegram %s: build request: %w", method, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	start := time.Now()
 	resp, err := b.http.Do(req)
 	if err != nil {
+		err = redact(method, err)
+		b.observe(ctx, method, "error", start)
+		slog.WarnContext(ctx, "telegram request failed", "method", method, "dur", time.Since(start), "err", err)
 		return nil, err
 	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
+	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode != http.StatusOK {
-		return respBody, fmt.Errorf("%s %d: %s", method, resp.StatusCode, strings.TrimSpace(string(respBody)))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxRespBody))
+	b.observe(ctx, method, strconv.Itoa(resp.StatusCode), start)
+	if err != nil {
+		return nil, fmt.Errorf("telegram %s: read body: %w", method, redact(method, err))
 	}
-	return respBody, nil
+
+	var out apiResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("telegram %s: %d: decode: %w", method, resp.StatusCode, err)
+	}
+	if !out.OK || resp.StatusCode != http.StatusOK {
+		apiErr := &APIError{Method: method, Status: resp.StatusCode, Description: out.Description}
+		if out.Parameters != nil && out.Parameters.RetryAfter > 0 {
+			apiErr.RetryAfter = time.Duration(out.Parameters.RetryAfter) * time.Second
+		}
+		slog.WarnContext(ctx, "telegram api error", "method", method, "status", resp.StatusCode, "description", out.Description, "retry_after", apiErr.RetryAfter)
+		return nil, apiErr
+	}
+
+	slog.DebugContext(ctx, "telegram request", "method", method, "status", resp.StatusCode, "dur", time.Since(start))
+	return out.Result, nil
+}
+
+func (b *Bot) observe(ctx context.Context, method, status string, start time.Time) {
+	m := attribute.String("method", method)
+	requestsTotal.Add(ctx, 1, metric.WithAttributes(m, attribute.String("status", status)))
+	requestDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(m))
+}
+
+func (b *Bot) send(ctx context.Context, method string, payload any) error {
+	return retry.Do(ctx, "telegram", sendPolicy, func(ctx context.Context) error {
+		_, err := b.do(ctx, method, payload)
+		return classifySend(err)
+	})
+}
+
+func classifySend(err error) error {
+	if apiErr, ok := errors.AsType[*APIError](err); ok {
+		switch {
+		case apiErr.Status == http.StatusTooManyRequests:
+			return retry.RetryableAfter(err, apiErr.RetryAfter)
+		case apiErr.Status >= 500:
+			return retry.Retryable(err)
+		}
+		return err
+	}
+	if opErr, ok := errors.AsType[*net.OpError](err); ok && opErr.Op == "dial" {
+		return retry.Retryable(err)
+	}
+	return err
+}
+
+func redact(method string, err error) error {
+	if ue, ok := errors.AsType[*url.Error](err); ok {
+		err = ue.Err
+	}
+	return fmt.Errorf("telegram %s: %w", method, err)
 }
 
 func (b *Bot) GetUpdates(ctx context.Context, offset int64, timeoutSec int) ([]Update, error) {
-	q := url.Values{}
-	q.Set("timeout", fmt.Sprint(timeoutSec))
-	q.Set("allowed_updates", `["message","callback_query"]`)
+	payload := map[string]any{
+		"timeout":         timeoutSec,
+		"allowed_updates": []string{"message", "callback_query"},
+	}
 	if offset > 0 {
-		q.Set("offset", fmt.Sprint(offset))
+		payload["offset"] = offset
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.api("getUpdates")+"?"+q.Encode(), nil)
+	raw, err := b.do(ctx, "getUpdates", payload)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := b.http.Do(req)
-	if err != nil {
-		return nil, err
+	var updates []Update
+	if err := json.Unmarshal(raw, &updates); err != nil {
+		return nil, fmt.Errorf("telegram getUpdates: decode updates: %w", err)
 	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	var out updatesResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("decode updates: %w", err)
-	}
-	if !out.OK {
-		return nil, fmt.Errorf("getUpdates: %s", out.Description)
-	}
-	return out.Result, nil
+	return updates, nil
 }
 
 func (b *Bot) SendMessage(ctx context.Context, chatID int64, text string, markup *InlineKeyboardMarkup) error {
@@ -138,8 +234,7 @@ func (b *Bot) SendMessage(ctx context.Context, chatID int64, text string, markup
 	if markup != nil {
 		payload["reply_markup"] = markup
 	}
-	_, err := b.post(ctx, "sendMessage", payload)
-	return err
+	return b.send(ctx, "sendMessage", payload)
 }
 
 func (b *Bot) EditMessageText(ctx context.Context, chatID, messageID int64, text string, markup *InlineKeyboardMarkup) error {
@@ -153,14 +248,11 @@ func (b *Bot) EditMessageText(ctx context.Context, chatID, messageID int64, text
 		payload["reply_markup"] = markup
 	}
 
-	body, err := b.post(ctx, "editMessageText", payload)
-	if err != nil {
-		if bytes.Contains(body, []byte("message is not modified")) {
-			return nil
-		}
-		return err
+	err := b.send(ctx, "editMessageText", payload)
+	if apiErr, ok := errors.AsType[*APIError](err); ok && strings.Contains(apiErr.Description, "message is not modified") {
+		return nil
 	}
-	return nil
+	return err
 }
 
 func (b *Bot) AnswerCallbackQuery(ctx context.Context, queryID, text string) error {
@@ -168,8 +260,7 @@ func (b *Bot) AnswerCallbackQuery(ctx context.Context, queryID, text string) err
 	if text != "" {
 		payload["text"] = text
 	}
-	_, err := b.post(ctx, "answerCallbackQuery", payload)
-	return err
+	return b.send(ctx, "answerCallbackQuery", payload)
 }
 
 func Command(text string) (string, bool) {

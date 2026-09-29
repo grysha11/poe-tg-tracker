@@ -12,29 +12,28 @@ import (
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/grysha11/poe-tg-tracker/internal/config"
-	"github.com/grysha11/poe-tg-tracker/internal/logger"
+	"github.com/grysha11/poe-tg-tracker/internal/grpcclient"
 	pb "github.com/grysha11/poe-tg-tracker/internal/pb/exchangev1"
+	"github.com/grysha11/poe-tg-tracker/internal/telemetry"
 )
 
 func main() {
-	config.LoadDotEnv()
+	os.Exit(run())
+}
 
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		logLevel = "info"
-	}
-	log := logger.New(logLevel)
+func run() int {
+	config.LoadDotEnv()
 
 	upstream := os.Getenv("EXCHANGE_SERVICE_ADDR")
 	if upstream == "" {
 		fmt.Fprintln(os.Stderr, "gateway: EXCHANGE_SERVICE_ADDR env required")
-		os.Exit(1)
+		return 1
 	}
 
 	addr := os.Getenv("HTTP_LISTEN_ADDR")
@@ -45,17 +44,27 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	conn, err := grpc.NewClient(upstream, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	tel, err := telemetry.Setup(ctx, "gateway")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gateway: telemetry setup failed: %v\n", err)
+		return 1
+	}
+	defer tel.ShutdownWithTimeout()
+	log := tel.Log
+
+	telemetry.ServeMetrics(ctx, log, telemetry.NewMetricsMux())
+
+	conn, err := grpcclient.Dial(upstream)
 	if err != nil {
 		log.Error("dial exchange-service failed", "addr", upstream, "err", err)
-		os.Exit(1)
+		return 1
 	}
 	defer conn.Close()
 
 	handler, err := newHandler(ctx, conn, log)
 	if err != nil {
 		log.Error("build handler failed", "err", err)
-		os.Exit(1)
+		return 1
 	}
 
 	srv := &http.Server{
@@ -75,8 +84,9 @@ func main() {
 	log.Info("starting", "addr", addr, "upstream", upstream)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("serve failed", "err", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func newHandler(ctx context.Context, conn *grpc.ClientConn, log *slog.Logger) (http.Handler, error) {
@@ -105,7 +115,11 @@ func newHandler(ctx context.Context, conn *grpc.ClientConn, log *slog.Logger) (h
 	})
 	mux.Handle("/v1/", gw)
 
-	return logRequests(log, mux), nil
+	return otelhttp.NewHandler(logRequests(log, mux), "gateway", otelhttp.WithFilter(notProbe)), nil
+}
+
+func notProbe(r *http.Request) bool {
+	return r.URL.Path != "/healthz" && r.URL.Path != "/readyz"
 }
 
 type statusRecorder struct {
@@ -124,14 +138,21 @@ func logRequests(log *slog.Logger, next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 
-		attrs := []any{"method", r.Method, "path", r.URL.Path, "status", rec.status, "dur", time.Since(start)}
+		attrs := []any{"method", r.Method, "path", r.URL.Path, "query", r.URL.RawQuery, "status", rec.status, "dur", time.Since(start)}
+		ctx := r.Context()
 		switch {
-		case r.URL.Path == "/healthz" || r.URL.Path == "/readyz":
-			log.Debug("probe", attrs...)
+		case !notProbe(r):
+			if rec.status >= 500 {
+				log.WarnContext(ctx, "probe failed", attrs...)
+			} else {
+				log.DebugContext(ctx, "probe", attrs...)
+			}
 		case rec.status >= 500:
-			log.Error("request failed", attrs...)
+			log.ErrorContext(ctx, "request failed", attrs...)
+		case rec.status >= 400:
+			log.WarnContext(ctx, "request rejected", attrs...)
 		default:
-			log.Info("request", attrs...)
+			log.InfoContext(ctx, "request", attrs...)
 		}
 	})
 }

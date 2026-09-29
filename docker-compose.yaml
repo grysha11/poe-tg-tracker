@@ -84,7 +84,7 @@ services:
       ofelia.job-run.fetch-hourly.image: "poe-tg-tracker:latest"
       ofelia.job-run.fetch-hourly.pull: "false"
       ofelia.job-run.fetch-hourly.command: "./fetcher"
-      ofelia.job-run.fetch-hourly.environment: '["POE_CONTACT=${POE_CONTACT}","DB_DSN=root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4","LOG_LEVEL=info"]'
+      ofelia.job-run.fetch-hourly.environment: '["POE_CONTACT=${POE_CONTACT}","DB_DSN=root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/core?parseTime=false&charset=utf8mb4","LOG_LEVEL=info","OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}"]'
 
 volumes:
   mysql-data:

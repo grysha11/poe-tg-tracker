@@ -1,6 +1,10 @@
 package exchange
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/grysha11/poe-tg-tracker/internal/retry"
+)
 
 type Currency struct {
 	ID      string
@@ -47,4 +51,5 @@ type CurrencyRate struct {
 type Client struct {
 	HTTP      *http.Client
 	UserAgent string
+	Retry     retry.Policy
 }

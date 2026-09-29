@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,7 +30,22 @@ type Telemetry struct {
 	shutdowns []func(context.Context) error
 }
 
-func Setup(ctx context.Context, service string) (*Telemetry, error) {
+type Option func(*options)
+
+type options struct {
+	logWriter io.Writer
+}
+
+func WithLogWriter(w io.Writer) Option {
+	return func(o *options) { o.logWriter = w }
+}
+
+func Setup(ctx context.Context, service string, opts ...Option) (*Telemetry, error) {
+	o := options{logWriter: os.Stdout}
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	version := Version()
 	res, err := resource.New(ctx,
 		resource.WithFromEnv(),
@@ -55,8 +71,8 @@ func Setup(ctx context.Context, service string) (*Telemetry, error) {
 	t.shutdowns = append(t.shutdowns, mp.Shutdown)
 
 	level := parseLevel(os.Getenv("LOG_LEVEL"))
-	stdout := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}).
-		WithAttrs([]slog.Attr{slog.String("service", service), slog.String("version", version)})
+	stdout := slog.NewJSONHandler(o.logWriter, &slog.HandlerOptions{Level: level}).
+		WithAttrs([]slog.Attr{slog.String("service", service), slog.String("service_version", version)})
 
 	handler := slog.Handler(stdout)
 	if otlpLogsEnabled() {

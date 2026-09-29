@@ -30,6 +30,7 @@ func Run(ctx context.Context, dbase *db.DB, log *slog.Logger, digest *exchange.D
 	for _, c := range currencies {
 		byPath[c.ItemPath] = c
 	}
+	log.DebugContext(ctx, "ingest started", "known_currencies", len(currencies), "markets", len(digest.Markets))
 
 	tx, err := dbase.BeginTx(ctx, nil)
 	if err != nil {
@@ -118,9 +119,11 @@ func Run(ctx context.Context, dbase *db.DB, log *slog.Logger, digest *exchange.D
 		stats.MarketsInserted++
 	}
 
+	commitStart := time.Now()
 	if err := tx.Commit(); err != nil {
 		return stats, fmt.Errorf("commit: %w", err)
 	}
+	log.DebugContext(ctx, "ingest committed", "markets_inserted", stats.MarketsInserted, "commit_dur", time.Since(commitStart))
 
 	return stats, nil
 }

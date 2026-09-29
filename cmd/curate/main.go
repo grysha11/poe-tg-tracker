@@ -2,64 +2,88 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"text/tabwriter"
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
 	"github.com/grysha11/poe-tg-tracker/internal/config"
+	"github.com/grysha11/poe-tg-tracker/internal/grpcclient"
 	pb "github.com/grysha11/poe-tg-tracker/internal/pb/exchangev1"
+	"github.com/grysha11/poe-tg-tracker/internal/telemetry"
+)
+
+var (
+	commands   = []string{"list", "set", "sync", "bootstrap"}
+	errBadArgs = errors.New("bad arguments")
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	config.LoadDotEnv()
 
-	if len(os.Args) < 2 {
+	if len(os.Args) < 2 || !slices.Contains(commands, os.Args[1]) {
 		usage()
-		os.Exit(1)
+		return 1
+	}
+	command := os.Args[1]
+
+	addr := os.Getenv("EXCHANGE_SERVICE_ADDR")
+	if addr == "" {
+		fmt.Fprintln(os.Stderr, "curate: EXCHANGE_SERVICE_ADDR env required")
+		return 1
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	switch os.Args[1] {
-	case "list":
-		runList(ctx, mustDial())
-	case "set":
-		runSet(ctx, mustDial(), os.Args[2:])
-	case "sync":
-		runSync(ctx, mustDial(), os.Args[2:])
-	case "bootstrap":
-		runBootstrap(ctx, mustDial())
-	default:
-		usage()
-		os.Exit(1)
-	}
-}
-
-func mustDial() pb.ExchangeAdminServiceClient {
-	addr := os.Getenv("EXCHANGE_SERVICE_ADDR")
-	if addr == "" {
-		fmt.Fprintln(os.Stderr, "curate: EXCHANGE_SERVICE_ADDR env required")
-		os.Exit(1)
-	}
-
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	tel, err := telemetry.Setup(ctx, "curate", telemetry.WithLogWriter(os.Stderr))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "curate: dial %s failed: %v\n", addr, err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "curate: telemetry setup failed: %v\n", err)
+		return 1
 	}
-	return pb.NewExchangeAdminServiceClient(conn)
-}
+	defer tel.ShutdownWithTimeout()
+	log := tel.Log.With("command", command)
 
-func fail(action string, err error) {
-	fmt.Fprintf(os.Stderr, "curate: %s failed: %s\n", action, status.Convert(err).Message())
-	os.Exit(1)
+	conn, err := grpcclient.Dial(addr, grpc.WithDefaultCallOptions(grpc.WaitForReady(true)))
+	if err != nil {
+		log.Error("dial exchange-service failed", "addr", addr, "err", err)
+		return 1
+	}
+	defer conn.Close()
+	client := pb.NewExchangeAdminServiceClient(conn)
+
+	start := time.Now()
+	switch command {
+	case "list":
+		err = runList(ctx, client)
+	case "set":
+		err = runSet(ctx, client, os.Args[2:])
+	case "sync":
+		err = runSync(ctx, client, os.Args[2:])
+	case "bootstrap":
+		err = runBootstrap(ctx, client)
+	}
+
+	switch {
+	case errors.Is(err, errBadArgs):
+		return 1
+	case err != nil:
+		log.Error("curate command failed", "addr", addr, "code", status.Code(err).String(), "err", err, "dur", time.Since(start))
+		fmt.Fprintf(os.Stderr, "curate: %s failed: %s\n", command, status.Convert(err).Message())
+		return 1
+	}
+	log.Info("curate command ok", "addr", addr, "dur", time.Since(start))
+	return 0
 }
 
 func usage() {
@@ -84,14 +108,14 @@ Usage:
       Safe to re-run.`)
 }
 
-func runList(ctx context.Context, client pb.ExchangeAdminServiceClient) {
+func runList(ctx context.Context, client pb.ExchangeAdminServiceClient) error {
 	resp, err := client.ListPlaceholderCurrencies(ctx, &pb.ListPlaceholderCurrenciesRequest{})
 	if err != nil {
-		fail("list", err)
+		return err
 	}
 	if len(resp.GetCurrencies()) == 0 {
 		fmt.Println("no placeholder currencies pending curation")
-		return
+		return nil
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
@@ -101,10 +125,10 @@ func runList(ctx context.Context, client pb.ExchangeAdminServiceClient) {
 			c.GetCurrencyId(), c.GetItemPath(), c.GetName(),
 			time.Unix(c.GetDiscoveredAt(), 0).UTC().Format(time.RFC3339))
 	}
-	w.Flush()
+	return w.Flush()
 }
 
-func runSet(ctx context.Context, client pb.ExchangeAdminServiceClient, args []string) {
+func runSet(ctx context.Context, client pb.ExchangeAdminServiceClient, args []string) error {
 	fs := flag.NewFlagSet("set", flag.ExitOnError)
 	path := fs.String("path", "", "currency item_path, e.g. Metadata/Items/Currency/CurrencyRerollRare")
 	tradeID := fs.String("trade-id", "", "short trade id, e.g. chaos")
@@ -115,7 +139,7 @@ func runSet(ctx context.Context, client pb.ExchangeAdminServiceClient, args []st
 	if *path == "" || *tradeID == "" || *name == "" {
 		fmt.Fprintln(os.Stderr, "curate: -path, -trade-id and -name are required")
 		fs.Usage()
-		os.Exit(1)
+		return errBadArgs
 	}
 
 	if _, err := client.CurateCurrency(ctx, &pb.CurateCurrencyRequest{
@@ -124,13 +148,14 @@ func runSet(ctx context.Context, client pb.ExchangeAdminServiceClient, args []st
 		Name:     *name,
 		EmojiId:  *emoji,
 	}); err != nil {
-		fail("set", err)
+		return err
 	}
 
 	fmt.Printf("curated %s -> trade_id=%s name=%s\n", *path, *tradeID, *name)
+	return nil
 }
 
-func runSync(ctx context.Context, client pb.ExchangeAdminServiceClient, args []string) {
+func runSync(ctx context.Context, client pb.ExchangeAdminServiceClient, args []string) error {
 	fs := flag.NewFlagSet("sync", flag.ExitOnError)
 	realm := fs.String("realm", "poe2", "poe2scout realm")
 	league := fs.String("league", "", "poe2scout league name (default: exchange-service's POE_LEAGUE)")
@@ -138,19 +163,21 @@ func runSync(ctx context.Context, client pb.ExchangeAdminServiceClient, args []s
 
 	resp, err := client.SyncCurrenciesFromScout(ctx, &pb.SyncCurrenciesFromScoutRequest{Realm: *realm, League: *league})
 	if err != nil {
-		fail("sync", err)
+		return err
 	}
 
 	fmt.Printf("synced %d currencies (%d skipped: no item_path)\n", resp.GetSyncedCount(), resp.GetSkippedCount())
+	return nil
 }
 
-func runBootstrap(ctx context.Context, client pb.ExchangeAdminServiceClient) {
+func runBootstrap(ctx context.Context, client pb.ExchangeAdminServiceClient) error {
 	resp, err := client.BootstrapDefaultRatePairs(ctx, &pb.BootstrapDefaultRatePairsRequest{})
 	if err != nil {
-		fail("bootstrap", err)
+		return err
 	}
 
 	for _, p := range resp.GetPairs() {
 		fmt.Printf("default pair: %s -> %s\n", p.GetBase().GetName(), p.GetQuote().GetName())
 	}
+	return nil
 }

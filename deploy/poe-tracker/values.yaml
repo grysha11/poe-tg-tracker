@@ -32,6 +32,15 @@ exchangeService:
 gateway:
   replicas: 1
   port: 8080
+metrics:
+  port: 9464
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    labels:
+      release: kube-prometheus-stack
+otel:
+  endpoint: ""
 resources:
   requests:
     cpu: 50m

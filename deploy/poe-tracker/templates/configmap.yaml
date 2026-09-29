@@ -10,3 +10,7 @@ data:
   {{- end }}
   EXCHANGE_SERVICE_ADDR: "{{ include "poe-tracker.fullname" . }}-exchange-service:{{ .Values.exchangeService.port }}"
   GATEWAY_ADDR: "http://{{ include "poe-tracker.fullname" . }}-gateway:{{ .Values.gateway.port }}"
+  VERSION: {{ .Values.image.tag | quote }}
+  {{- with .Values.otel.endpoint }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ . | quote }}
+  {{- end }}

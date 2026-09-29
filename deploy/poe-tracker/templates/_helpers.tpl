@@ -70,6 +70,8 @@ spec:
           env:
             - name: {{ upper .protocol }}_LISTEN_ADDR
               value: ":{{ .values.port }}"
+            - name: METRICS_LISTEN_ADDR
+              value: ":{{ $root.Values.metrics.port }}"
           envFrom:
             - configMapRef:
                 name: {{ include "poe-tracker.fullname" $root }}-config
@@ -80,7 +82,15 @@ spec:
           ports:
             - name: {{ .protocol }}
               containerPort: {{ .values.port }}
+            - name: metrics
+              containerPort: {{ $root.Values.metrics.port }}
           {{- if eq .protocol "grpc" }}
+          startupProbe:
+            grpc:
+              port: {{ .values.port }}
+              service: liveness
+            periodSeconds: 5
+            failureThreshold: 24
           readinessProbe:
             grpc:
               port: {{ .values.port }}
@@ -89,9 +99,16 @@ spec:
           livenessProbe:
             grpc:
               port: {{ .values.port }}
+              service: liveness
             periodSeconds: 20
             failureThreshold: 3
           {{- else }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
           readinessProbe:
             httpGet:
               path: /readyz
@@ -116,6 +133,7 @@ metadata:
   name: {{ $fullname }}
   labels:
     {{- include "poe-tracker.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ .name }}
 spec:
   selector:
     {{- include "poe-tracker.componentSelectorLabels" . | nindent 4 }}
@@ -123,4 +141,7 @@ spec:
     - name: {{ .protocol }}
       port: {{ .values.port }}
       targetPort: {{ .protocol }}
+    - name: metrics
+      port: {{ $root.Values.metrics.port }}
+      targetPort: metrics
 {{- end }}

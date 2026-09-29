@@ -8,6 +8,9 @@ migrate:
   enabled: false
 sealedSecrets:
   enabled: false
+metrics:
+  serviceMonitor:
+    enabled: false
 resources:
   requests:
     cpu: 10m

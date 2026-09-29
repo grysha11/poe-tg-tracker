@@ -32,7 +32,6 @@ func LoadDotEnv() {
 type Config struct {
 	TelegramToken string
 	League        string
-	LogLevel      string
 	GatewayAddr   string
 	Whitelist     []int64
 }
@@ -80,11 +79,6 @@ func LoadConfig() (Config, error) {
 
 	league := os.Getenv("POE_LEAGUE")
 
-	logLevel, err := takeEnv("LOG_LEVEL")
-	if err != nil {
-		logLevel = "info"
-	}
-
 	gatewayAddr, err := takeEnv("GATEWAY_ADDR")
 	if err != nil {
 		return Config{}, err
@@ -98,7 +92,6 @@ func LoadConfig() (Config, error) {
 	return Config{
 		TelegramToken: token,
 		League:        league,
-		LogLevel:      logLevel,
 		GatewayAddr:   gatewayAddr,
 		Whitelist:     whitelist,
 	}, nil

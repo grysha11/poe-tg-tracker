@@ -175,7 +175,7 @@ func TestBuildRates_FiltersBySelectedCategories(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
-	app := &App{gw: gatewayclient.New(ts.URL), cfg: config.Config{League: "Forbidden Rites"}}
+	app := &App{gw: gatewayclient.New(ts.URL), cfg: config.Config{League: "Forbidden Rites"}, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	text, markup, err := app.buildRates(context.Background(), priceView, selection{mask: 0b101})
 	if err != nil {
 		t.Fatalf("buildRates: %v", err)

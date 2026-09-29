@@ -18,6 +18,8 @@ const (
 	outcomeOK      = "ok"
 	outcomeError   = "error"
 	outcomeUnknown = "unknown"
+	// outcomeEmptySelection is a view pressed with every category unselected.
+	outcomeEmptySelection = "empty_selection"
 )
 
 func (a *App) isWhitelisted(userID int64) bool {
@@ -114,13 +116,18 @@ func (a *App) handleCallback(ctx context.Context, cb *telegram.CallbackQuery) {
 	}
 
 	start := time.Now()
-	outcome, viewKey := a.runCallback(ctx, cb)
+	outcome, viewKey, sel := a.runCallback(ctx, cb)
 
-	callbacksTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("view", viewKey), attribute.String("outcome", outcome)))
-	a.log.InfoContext(ctx, "callback handled", "data", cb.Data, "user_id", cb.From.ID, "outcome", outcome, "dur", time.Since(start))
+	callbacksTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("view", viewKey), attribute.String("outcome", outcome), attribute.Bool("filtered", !sel.all)))
+	args := []any{"data", cb.Data, "user_id", cb.From.ID, "outcome", outcome, "dur", time.Since(start)}
+	if !sel.all {
+		args = append(args, "categories", sel.names(a.cats))
+	}
+	a.log.InfoContext(ctx, "callback handled", args...)
 }
 
-func (a *App) runCallback(ctx context.Context, cb *telegram.CallbackQuery) (outcome, viewKey string) {
+func (a *App) runCallback(ctx context.Context, cb *telegram.CallbackQuery) (outcome, viewKey string, sel selection) {
 	prefix, rest, _ := strings.Cut(cb.Data, ":")
 	key, mask, _ := strings.Cut(rest, ":")
 	view, okView := viewByKey(key)
@@ -128,7 +135,7 @@ func (a *App) runCallback(ctx context.Context, cb *telegram.CallbackQuery) (outc
 	if (prefix != ratesCallback && prefix != categoriesCallback) || !okView || !okSel || cb.Message == nil {
 		a.log.WarnContext(ctx, "unknown callback", "data", cb.Data, "user_id", cb.From.ID, "has_message", cb.Message != nil)
 		a.answer(ctx, cb, "")
-		return outcomeUnknown, outcomeUnknown
+		return outcomeUnknown, outcomeUnknown, allCategories
 	}
 
 	chatID := cb.Message.Chat.ID
@@ -144,13 +151,13 @@ func (a *App) runCallback(ctx context.Context, cb *telegram.CallbackQuery) (outc
 		text, markup, err = a.buildRates(ctx, view, sel)
 		if errors.Is(err, errNoCategories) {
 			a.answer(ctx, cb, "Select at least one category")
-			return outcomeOK, viewKey
+			return outcomeEmptySelection, viewKey, sel
 		}
 	}
 	if err != nil {
 		a.log.ErrorContext(ctx, "callback load failed", "data", cb.Data, "chat_id", chatID, "err", err)
 		a.answer(ctx, cb, "Couldn't load data")
-		return outcomeError, viewKey
+		return outcomeError, viewKey, sel
 	}
 
 	outcome = outcomeOK
@@ -161,7 +168,7 @@ func (a *App) runCallback(ctx context.Context, cb *telegram.CallbackQuery) (outc
 		a.log.ErrorContext(ctx, "editMessageText failed", "chat_id", chatID, "message_id", cb.Message.MessageID, "err", err)
 		outcome = outcomeError
 	}
-	return outcome, viewKey
+	return outcome, viewKey, sel
 }
 
 func (a *App) answer(ctx context.Context, cb *telegram.CallbackQuery, text string) bool {

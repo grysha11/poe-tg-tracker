@@ -197,6 +197,11 @@ func (a *App) categories(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.cats, a.catsAt = cats[:min(len(cats), maxCategories)], time.Now()
+	if len(cats) > maxCategories {
+		a.log.WarnContext(ctx, "too many categories, extra ones are not selectable", "count", len(cats), "max", maxCategories)
+		cats = cats[:maxCategories]
+	}
+	a.cats, a.catsAt = cats, time.Now()
+	a.log.DebugContext(ctx, "categories refreshed", "count", len(cats))
 	return a.cats, nil
 }

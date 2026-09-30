@@ -63,7 +63,8 @@ func RankByVolume(rows []SnapshotRow, base Currency, limit int, cats Categories)
 	return out
 }
 
-func RankByPrice(rows []SnapshotRow, base Currency, via []Currency, limit int, cats Categories) []CurrencyRate {
+// RatesByID returns every currency priced in base, directly or through one of via, keyed by currency ID.
+func RatesByID(rows []SnapshotRow, base Currency, via []Currency) map[string]CurrencyRate {
 	direct := currencyRatesFrom(rows, base)
 
 	result := make(map[string]CurrencyRate, len(direct))
@@ -95,8 +96,11 @@ func RankByPrice(rows []SnapshotRow, base Currency, via []Currency, limit int, c
 			}
 		}
 	}
+	return result
+}
 
-	out := filtered(result, cats)
+func RankByPrice(rows []SnapshotRow, base Currency, via []Currency, limit int, cats Categories) []CurrencyRate {
+	out := filtered(RatesByID(rows, base, via), cats)
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Rate.VWAP != out[j].Rate.VWAP {
 			return out[i].Rate.VWAP < out[j].Rate.VWAP

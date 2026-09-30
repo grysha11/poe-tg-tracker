@@ -107,6 +107,9 @@ func TestGetRates(t *testing.T) {
 		if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 			t.Errorf("volume order = %v, want %v", got, want)
 		}
+		if resp.GetPrevHourUtc() != 0 || resp.GetRates()[0].GetPrevVwap() != 0 {
+			t.Errorf("prev hour/vwap = %d/%v, want 0/0 with a single snapshot hour", resp.GetPrevHourUtc(), resp.GetRates()[0].GetPrevVwap())
+		}
 	})
 
 	t.Run("price view", func(t *testing.T) {
@@ -162,6 +165,46 @@ func TestGetRates(t *testing.T) {
 			t.Errorf("code = %v, want NotFound (err: %v)", status.Code(err), err)
 		}
 	})
+}
+
+func TestGetRates_PreviousHour(t *testing.T) {
+	dbase := newTestDB(t)
+	seed(t, dbase)
+	client := newClient(t, dbase)
+
+	id := func(tradeID string) int64 {
+		var id int64
+		if err := dbase.QueryRow(`SELECT currency_id FROM currencies WHERE trade_id = ?`, tradeID).Scan(&id); err != nil {
+			t.Fatalf("currency %s: %v", tradeID, err)
+		}
+		return id
+	}
+	divine, chaos, mirror := id("divine"), id("chaos"), id("mirror")
+
+	// The latest earlier hour is 3h back, so it is used even though it is stale.
+	stale := testHour - 3*3600
+	insertSnapshot(t, dbase, testLeague, stale, divine, mirror, 50, 8)
+	insertSnapshot(t, dbase, testLeague, stale, divine, chaos, 10, 1200)
+	insertSnapshot(t, dbase, testLeague, testHour-5*3600, divine, mirror, 50, 5)
+
+	resp, err := client.GetRates(context.Background(), &pb.GetRatesRequest{View: pb.RateView_RATE_VIEW_PRICE})
+	if err != nil {
+		t.Fatalf("GetRates: %v", err)
+	}
+	if resp.GetPrevHourUtc() != stale {
+		t.Errorf("prev hour = %d, want %d", resp.GetPrevHourUtc(), stale)
+	}
+
+	prev := map[string]float64{}
+	for _, r := range resp.GetRates() {
+		prev[r.GetCurrency().GetTradeId()] = r.GetPrevVwap()
+	}
+	want := map[string]float64{"mirror": 0.16, "chaos": 120, "exalted": 0}
+	for tradeID, w := range want {
+		if prev[tradeID] != w {
+			t.Errorf("%s prev vwap = %v, want %v", tradeID, prev[tradeID], w)
+		}
+	}
 }
 
 func TestListCategories(t *testing.T) {

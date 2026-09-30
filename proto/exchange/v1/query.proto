@@ -59,6 +59,8 @@ message RankedRate {
   uint64 base_volume = 5;
   uint64 quote_volume = 6;
   CurrencyRef via = 7;
+  // vwap in the previous snapshot hour; 0 when that hour has no rate for this currency.
+  double prev_vwap = 8;
 }
 
 message GetRatesResponse {
@@ -67,6 +69,8 @@ message GetRatesResponse {
   int64 hour_utc = 3;
   string league = 4;
   int64 last_fetch_utc = 5;
+  // Latest snapshot hour before hour_utc; 0 when there is none.
+  int64 prev_hour_utc = 6;
 }
 
 message ListLeaguesRequest {

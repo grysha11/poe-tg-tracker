@@ -78,28 +78,53 @@ func (s *QueryServer) GetRates(ctx context.Context, req *pb.GetRatesRequest) (*p
 		}
 	}
 
+	quotes := make([]exchange.Currency, 0, len(pairs))
+	for _, p := range pairs {
+		quotes = append(quotes, p.quote)
+	}
+
 	var ranked []exchange.CurrencyRate
 	if req.GetView() == pb.RateView_RATE_VIEW_PRICE {
-		quotes := make([]exchange.Currency, 0, len(pairs))
-		for _, p := range pairs {
-			quotes = append(quotes, p.quote)
-		}
 		ranked = exchange.RankByPrice(rows, base, quotes, limit, cats)
 	} else {
 		ranked = exchange.RankByVolume(rows, base, limit, cats)
 	}
 
+	prevHour, prev, err := s.previousRates(ctx, league, hourUnix, base, quotes)
+	if err != nil {
+		return nil, err
+	}
+
 	slog.DebugContext(ctx, "rates resolved",
-		"league", league, "view", req.GetView().String(), "hour_utc", hourUnix,
+		"league", league, "view", req.GetView().String(), "hour_utc", hourUnix, "prev_hour_utc", prevHour,
 		"snapshot_rows", len(rows), "ranked", len(ranked), "limit", limit, "categories", req.GetCategories(), "last_fetch_utc", lastFetchUnix)
 
 	return &pb.GetRatesResponse{
 		Base:         toCurrencyRef(base),
-		Rates:        toRankedRates(ranked),
+		Rates:        toRankedRates(ranked, prev),
 		HourUtc:      hourUnix,
 		League:       league,
 		LastFetchUtc: lastFetchUnix,
+		PrevHourUtc:  prevHour,
 	}, nil
+}
+
+// previousRates prices every currency in the latest snapshot hour before hour,
+// however long ago that was.
+func (s *QueryServer) previousRates(ctx context.Context, league string, hour int64, base exchange.Currency, quotes []exchange.Currency) (int64, map[string]exchange.CurrencyRate, error) {
+	prevHour, err := s.Q.PreviousSnapshotHour(ctx, dbgen.PreviousSnapshotHourParams{League: league, HourUtc: hour})
+	if err != nil {
+		return 0, nil, status.Errorf(codes.Internal, "previous snapshot hour: %v", err)
+	}
+	if prevHour == 0 {
+		return 0, nil, nil
+	}
+
+	dbRows, err := s.Q.ListSnapshotRatesForHour(ctx, dbgen.ListSnapshotRatesForHourParams{HourUtc: prevHour, League: league})
+	if err != nil {
+		return 0, nil, status.Errorf(codes.Internal, "list previous snapshot rates: %v", err)
+	}
+	return prevHour, exchange.RatesByID(toSnapshotRows(dbRows), base, quotes), nil
 }
 
 func (s *QueryServer) ListLeagues(ctx context.Context, req *pb.ListLeaguesRequest) (*pb.ListLeaguesResponse, error) {

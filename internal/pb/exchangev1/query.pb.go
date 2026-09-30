@@ -7,13 +7,12 @@
 package exchangev1
 
 import (
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
-
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
 )
 
 const (
@@ -201,14 +200,16 @@ func (x *GetRatesRequest) GetCategories() []string {
 }
 
 type RankedRate struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Currency      *CurrencyRef           `protobuf:"bytes,1,opt,name=currency,proto3" json:"currency,omitempty"`
-	Vwap          float64                `protobuf:"fixed64,2,opt,name=vwap,proto3" json:"vwap,omitempty"`
-	Low           float64                `protobuf:"fixed64,3,opt,name=low,proto3" json:"low,omitempty"`
-	High          float64                `protobuf:"fixed64,4,opt,name=high,proto3" json:"high,omitempty"`
-	BaseVolume    uint64                 `protobuf:"varint,5,opt,name=base_volume,json=baseVolume,proto3" json:"base_volume,omitempty"`
-	QuoteVolume   uint64                 `protobuf:"varint,6,opt,name=quote_volume,json=quoteVolume,proto3" json:"quote_volume,omitempty"`
-	Via           *CurrencyRef           `protobuf:"bytes,7,opt,name=via,proto3" json:"via,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Currency    *CurrencyRef           `protobuf:"bytes,1,opt,name=currency,proto3" json:"currency,omitempty"`
+	Vwap        float64                `protobuf:"fixed64,2,opt,name=vwap,proto3" json:"vwap,omitempty"`
+	Low         float64                `protobuf:"fixed64,3,opt,name=low,proto3" json:"low,omitempty"`
+	High        float64                `protobuf:"fixed64,4,opt,name=high,proto3" json:"high,omitempty"`
+	BaseVolume  uint64                 `protobuf:"varint,5,opt,name=base_volume,json=baseVolume,proto3" json:"base_volume,omitempty"`
+	QuoteVolume uint64                 `protobuf:"varint,6,opt,name=quote_volume,json=quoteVolume,proto3" json:"quote_volume,omitempty"`
+	Via         *CurrencyRef           `protobuf:"bytes,7,opt,name=via,proto3" json:"via,omitempty"`
+	// vwap in the previous snapshot hour; 0 when that hour has no rate for this currency.
+	PrevVwap      float64 `protobuf:"fixed64,8,opt,name=prev_vwap,json=prevVwap,proto3" json:"prev_vwap,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -292,13 +293,22 @@ func (x *RankedRate) GetVia() *CurrencyRef {
 	return nil
 }
 
+func (x *RankedRate) GetPrevVwap() float64 {
+	if x != nil {
+		return x.PrevVwap
+	}
+	return 0
+}
+
 type GetRatesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Base          *CurrencyRef           `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
-	Rates         []*RankedRate          `protobuf:"bytes,2,rep,name=rates,proto3" json:"rates,omitempty"`
-	HourUtc       int64                  `protobuf:"varint,3,opt,name=hour_utc,json=hourUtc,proto3" json:"hour_utc,omitempty"`
-	League        string                 `protobuf:"bytes,4,opt,name=league,proto3" json:"league,omitempty"`
-	LastFetchUtc  int64                  `protobuf:"varint,5,opt,name=last_fetch_utc,json=lastFetchUtc,proto3" json:"last_fetch_utc,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Base         *CurrencyRef           `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	Rates        []*RankedRate          `protobuf:"bytes,2,rep,name=rates,proto3" json:"rates,omitempty"`
+	HourUtc      int64                  `protobuf:"varint,3,opt,name=hour_utc,json=hourUtc,proto3" json:"hour_utc,omitempty"`
+	League       string                 `protobuf:"bytes,4,opt,name=league,proto3" json:"league,omitempty"`
+	LastFetchUtc int64                  `protobuf:"varint,5,opt,name=last_fetch_utc,json=lastFetchUtc,proto3" json:"last_fetch_utc,omitempty"`
+	// Latest snapshot hour before hour_utc; 0 when there is none.
+	PrevHourUtc   int64 `protobuf:"varint,6,opt,name=prev_hour_utc,json=prevHourUtc,proto3" json:"prev_hour_utc,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -364,6 +374,13 @@ func (x *GetRatesResponse) GetLeague() string {
 func (x *GetRatesResponse) GetLastFetchUtc() int64 {
 	if x != nil {
 		return x.LastFetchUtc
+	}
+	return 0
+}
+
+func (x *GetRatesResponse) GetPrevHourUtc() int64 {
+	if x != nil {
+		return x.PrevHourUtc
 	}
 	return 0
 }
@@ -691,7 +708,7 @@ const file_exchange_v1_query_proto_rawDesc = "" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x1e\n" +
 	"\n" +
 	"categories\x18\x04 \x03(\tR\n" +
-	"categories\"\xec\x01\n" +
+	"categories\"\x89\x02\n" +
 	"\n" +
 	"RankedRate\x124\n" +
 	"\bcurrency\x18\x01 \x01(\v2\x18.exchange.v1.CurrencyRefR\bcurrency\x12\x12\n" +
@@ -701,13 +718,15 @@ const file_exchange_v1_query_proto_rawDesc = "" +
 	"\vbase_volume\x18\x05 \x01(\x04R\n" +
 	"baseVolume\x12!\n" +
 	"\fquote_volume\x18\x06 \x01(\x04R\vquoteVolume\x12*\n" +
-	"\x03via\x18\a \x01(\v2\x18.exchange.v1.CurrencyRefR\x03via\"\xc8\x01\n" +
+	"\x03via\x18\a \x01(\v2\x18.exchange.v1.CurrencyRefR\x03via\x12\x1b\n" +
+	"\tprev_vwap\x18\b \x01(\x01R\bprevVwap\"\xec\x01\n" +
 	"\x10GetRatesResponse\x12,\n" +
 	"\x04base\x18\x01 \x01(\v2\x18.exchange.v1.CurrencyRefR\x04base\x12-\n" +
 	"\x05rates\x18\x02 \x03(\v2\x17.exchange.v1.RankedRateR\x05rates\x12\x19\n" +
 	"\bhour_utc\x18\x03 \x01(\x03R\ahourUtc\x12\x16\n" +
 	"\x06league\x18\x04 \x01(\tR\x06league\x12$\n" +
-	"\x0elast_fetch_utc\x18\x05 \x01(\x03R\flastFetchUtc\"/\n" +
+	"\x0elast_fetch_utc\x18\x05 \x01(\x03R\flastFetchUtc\x12\"\n" +
+	"\rprev_hour_utc\x18\x06 \x01(\x03R\vprevHourUtc\"/\n" +
 	"\x12ListLeaguesRequest\x12\x19\n" +
 	"\bhour_utc\x18\x01 \x01(\x03R\ahourUtc\"/\n" +
 	"\x13ListLeaguesResponse\x12\x18\n" +
@@ -747,25 +766,22 @@ func file_exchange_v1_query_proto_rawDescGZIP() []byte {
 	return file_exchange_v1_query_proto_rawDescData
 }
 
-var (
-	file_exchange_v1_query_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-	file_exchange_v1_query_proto_msgTypes  = make([]protoimpl.MessageInfo, 11)
-	file_exchange_v1_query_proto_goTypes   = []any{
-		RateView(0),                          // 0: exchange.v1.RateView
-		(*CurrencyRef)(nil),                  // 1: exchange.v1.CurrencyRef
-		(*GetRatesRequest)(nil),              // 2: exchange.v1.GetRatesRequest
-		(*RankedRate)(nil),                   // 3: exchange.v1.RankedRate
-		(*GetRatesResponse)(nil),             // 4: exchange.v1.GetRatesResponse
-		(*ListLeaguesRequest)(nil),           // 5: exchange.v1.ListLeaguesRequest
-		(*ListLeaguesResponse)(nil),          // 6: exchange.v1.ListLeaguesResponse
-		(*ListDefaultRatePairsRequest)(nil),  // 7: exchange.v1.ListDefaultRatePairsRequest
-		(*DefaultRatePair)(nil),              // 8: exchange.v1.DefaultRatePair
-		(*ListDefaultRatePairsResponse)(nil), // 9: exchange.v1.ListDefaultRatePairsResponse
-		(*ListCategoriesRequest)(nil),        // 10: exchange.v1.ListCategoriesRequest
-		(*ListCategoriesResponse)(nil),       // 11: exchange.v1.ListCategoriesResponse
-	}
-)
-
+var file_exchange_v1_query_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_exchange_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_exchange_v1_query_proto_goTypes = []any{
+	(RateView)(0),                        // 0: exchange.v1.RateView
+	(*CurrencyRef)(nil),                  // 1: exchange.v1.CurrencyRef
+	(*GetRatesRequest)(nil),              // 2: exchange.v1.GetRatesRequest
+	(*RankedRate)(nil),                   // 3: exchange.v1.RankedRate
+	(*GetRatesResponse)(nil),             // 4: exchange.v1.GetRatesResponse
+	(*ListLeaguesRequest)(nil),           // 5: exchange.v1.ListLeaguesRequest
+	(*ListLeaguesResponse)(nil),          // 6: exchange.v1.ListLeaguesResponse
+	(*ListDefaultRatePairsRequest)(nil),  // 7: exchange.v1.ListDefaultRatePairsRequest
+	(*DefaultRatePair)(nil),              // 8: exchange.v1.DefaultRatePair
+	(*ListDefaultRatePairsResponse)(nil), // 9: exchange.v1.ListDefaultRatePairsResponse
+	(*ListCategoriesRequest)(nil),        // 10: exchange.v1.ListCategoriesRequest
+	(*ListCategoriesResponse)(nil),       // 11: exchange.v1.ListCategoriesResponse
+}
 var file_exchange_v1_query_proto_depIdxs = []int32{
 	0,  // 0: exchange.v1.GetRatesRequest.view:type_name -> exchange.v1.RateView
 	1,  // 1: exchange.v1.RankedRate.currency:type_name -> exchange.v1.CurrencyRef

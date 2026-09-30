@@ -24,6 +24,12 @@ service ExchangeQueryService {
       get: "/v1/rate-pairs/default"
     };
   }
+
+  rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse) {
+    option (google.api.http) = {
+      get: "/v1/categories"
+    };
+  }
 }
 
 enum RateView {
@@ -42,6 +48,7 @@ message GetRatesRequest {
   string league = 1;
   RateView view = 2;
   int32 limit = 3;
+  repeated string categories = 4;
 }
 
 message RankedRate {
@@ -80,4 +87,10 @@ message DefaultRatePair {
 
 message ListDefaultRatePairsResponse {
   repeated DefaultRatePair pairs = 1;
+}
+
+message ListCategoriesRequest {}
+
+message ListCategoriesResponse {
+  repeated string categories = 1;
 }

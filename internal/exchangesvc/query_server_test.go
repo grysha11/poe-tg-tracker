@@ -2,6 +2,7 @@ package exchangesvc_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -21,6 +22,9 @@ func seed(t *testing.T, dbase *db.DB) {
 	chaos := insertCurrency(t, dbase, "Metadata/Items/Currency/CurrencyRerollRare", "chaos", "Chaos Orb")
 	exalt := insertCurrency(t, dbase, "Metadata/Items/Currency/CurrencyAddModToRare", "exalted", "Exalted Orb")
 	mirror := insertCurrency(t, dbase, "Metadata/Items/Currency/CurrencyDuplicate", "mirror", "Mirror of Kalandra")
+	if _, err := dbase.Exec(`UPDATE currencies SET category = 'currency' WHERE currency_id IN (?, ?, ?)`, divine, chaos, exalt); err != nil {
+		t.Fatalf("set categories: %v", err)
+	}
 
 	for i, quote := range []int64{chaos, exalt} {
 		if _, err := dbase.Exec(
@@ -129,12 +133,53 @@ func TestGetRates(t *testing.T) {
 		}
 	})
 
+	t.Run("categories filter", func(t *testing.T) {
+		for _, tc := range []struct {
+			categories []string
+			want       []string
+		}{
+			{[]string{"currency"}, []string{"exalted", "chaos"}},
+			{[]string{"uncategorized"}, []string{"mirror"}},
+			{[]string{"nope"}, nil},
+		} {
+			resp, err := client.GetRates(ctx, &pb.GetRatesRequest{Categories: tc.categories})
+			if err != nil {
+				t.Fatalf("GetRates(%v): %v", tc.categories, err)
+			}
+			var got []string
+			for _, r := range resp.GetRates() {
+				got = append(got, r.GetCurrency().GetTradeId())
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("GetRates(%v) = %v, want %v", tc.categories, got, tc.want)
+			}
+		}
+	})
+
 	t.Run("unknown league is NotFound", func(t *testing.T) {
 		_, err := client.GetRates(ctx, &pb.GetRatesRequest{League: "No Such League"})
 		if status.Code(err) != codes.NotFound {
 			t.Errorf("code = %v, want NotFound (err: %v)", status.Code(err), err)
 		}
 	})
+}
+
+func TestListCategories(t *testing.T) {
+	dbase := newTestDB(t)
+	seed(t, dbase)
+	insertCurrency(t, dbase, "Metadata/Items/Currency/CurrencyGemQuality", "gcp", "Gemcutter's Prism")
+	if _, err := dbase.Exec(`UPDATE currencies SET category = 'gems' WHERE trade_id = 'gcp'`); err != nil {
+		t.Fatalf("set category: %v", err)
+	}
+
+	resp, err := newClient(t, dbase).ListCategories(context.Background(), &pb.ListCategoriesRequest{})
+	if err != nil {
+		t.Fatalf("ListCategories: %v", err)
+	}
+	want := []string{"currency", "gems", "uncategorized"}
+	if !slices.Equal(resp.GetCategories(), want) {
+		t.Errorf("categories = %v, want %v", resp.GetCategories(), want)
+	}
 }
 
 func TestGetRates_NoDefaultPairsIsFailedPrecondition(t *testing.T) {

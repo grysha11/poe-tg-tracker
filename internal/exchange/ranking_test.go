@@ -3,17 +3,17 @@ package exchange
 import "testing"
 
 var (
-	divine = Currency{ID: "Metadata/Items/Currency/CurrencyModValues", Name: "Divine Orb", TradeID: "divine"}
-	chaos  = Currency{ID: "Metadata/Items/Currency/CurrencyRerollRare", Name: "Chaos Orb", TradeID: "chaos"}
-	exalt  = Currency{ID: "Metadata/Items/Currency/CurrencyAddModToRare", Name: "Exalted Orb", TradeID: "exalted"}
-	mirror = Currency{ID: "Metadata/Items/Currency/CurrencyDuplicate", Name: "Mirror of Kalandra", TradeID: "mirror"}
-	annul  = Currency{ID: "Metadata/Items/Currency/CurrencyAnnulment", Name: "Orb of Annulment", TradeID: "annul"}
-	gem    = Currency{ID: "Metadata/Items/Gems/SomeSupportGem", Name: "Some Gem", TradeID: "gem"}
+	divine = Currency{ID: "Metadata/Items/Currency/CurrencyModValues", Name: "Divine Orb", TradeID: "divine", Category: "currency"}
+	chaos  = Currency{ID: "Metadata/Items/Currency/CurrencyRerollRare", Name: "Chaos Orb", TradeID: "chaos", Category: "currency"}
+	exalt  = Currency{ID: "Metadata/Items/Currency/CurrencyAddModToRare", Name: "Exalted Orb", TradeID: "exalted", Category: "currency"}
+	mirror = Currency{ID: "Metadata/Items/Currency/CurrencyDuplicate", Name: "Mirror of Kalandra", TradeID: "mirror", Category: Uncategorized}
+	annul  = Currency{ID: "Metadata/Items/Currency/CurrencyAnnulment", Name: "Orb of Annulment", TradeID: "annul", Category: "essences"}
+	gem    = Currency{ID: "Metadata/Items/Gems/SomeSupportGem", Name: "Some Gem", TradeID: "gem", Category: "gems"}
 )
 
 func TestRankByVolume(t *testing.T) {
 	t.Run("empty rows", func(t *testing.T) {
-		if got := RankByVolume(nil, divine, 10); len(got) != 0 {
+		if got := RankByVolume(nil, divine, 10, nil); len(got) != 0 {
 			t.Fatalf("RankByVolume(nil) = %v, want empty", got)
 		}
 	})
@@ -26,7 +26,7 @@ func TestRankByVolume(t *testing.T) {
 	}
 
 	t.Run("ranks by base volume descending, non-currency items included", func(t *testing.T) {
-		got := RankByVolume(rows, divine, 10)
+		got := RankByVolume(rows, divine, 10, nil)
 		want := []string{"gem", "exalted", "chaos"}
 		if len(got) != len(want) {
 			t.Fatalf("len(got) = %d, want %d (zero-volume mirror excluded): %+v", len(got), len(want), got)
@@ -39,7 +39,7 @@ func TestRankByVolume(t *testing.T) {
 	})
 
 	t.Run("limit truncates", func(t *testing.T) {
-		got := RankByVolume(rows, divine, 1)
+		got := RankByVolume(rows, divine, 1, nil)
 		if len(got) != 1 {
 			t.Fatalf("len(got) = %d, want 1", len(got))
 		}
@@ -48,8 +48,15 @@ func TestRankByVolume(t *testing.T) {
 		}
 	})
 
+	t.Run("category filter applies before limit", func(t *testing.T) {
+		got := RankByVolume(rows, divine, 1, Categories{"currency": true})
+		if len(got) != 1 || got[0].Currency.TradeID != "exalted" {
+			t.Fatalf("got = %+v, want just exalted (gem filtered out before truncating)", got)
+		}
+	})
+
 	t.Run("VWAP computed as quoteVol/baseVol", func(t *testing.T) {
-		got := RankByVolume(rows, divine, 10)
+		got := RankByVolume(rows, divine, 10, nil)
 		for _, cr := range got {
 			if cr.Currency.TradeID == "chaos" && cr.Rate.VWAP != 150 {
 				t.Errorf("chaos VWAP = %v, want 150 (1500/10)", cr.Rate.VWAP)
@@ -60,7 +67,7 @@ func TestRankByVolume(t *testing.T) {
 
 func TestRankByPrice(t *testing.T) {
 	t.Run("empty rows", func(t *testing.T) {
-		if got := RankByPrice(nil, divine, []Currency{chaos, exalt}, 10); len(got) != 0 {
+		if got := RankByPrice(nil, divine, []Currency{chaos, exalt}, 10, nil); len(got) != 0 {
 			t.Fatalf("RankByPrice(nil) = %v, want empty", got)
 		}
 	})
@@ -73,7 +80,7 @@ func TestRankByPrice(t *testing.T) {
 	}
 
 	t.Run("sorts ascending by VWAP (lowest = most expensive)", func(t *testing.T) {
-		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10)
+		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10, nil)
 		var order []string
 		for _, cr := range got {
 			order = append(order, cr.Currency.TradeID)
@@ -90,7 +97,7 @@ func TestRankByPrice(t *testing.T) {
 	})
 
 	t.Run("routes via chaos when no direct rate exists", func(t *testing.T) {
-		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10)
+		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10, nil)
 		var annulRate *CurrencyRate
 		for i := range got {
 			if got[i].Currency.TradeID == "annul" {
@@ -109,7 +116,7 @@ func TestRankByPrice(t *testing.T) {
 	})
 
 	t.Run("direct rate is never overridden by a via rate", func(t *testing.T) {
-		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10)
+		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10, nil)
 		for _, cr := range got {
 			if cr.Currency.TradeID == "chaos" && cr.Via != nil {
 				t.Errorf("chaos has a direct rate, Via should be nil, got %v", cr.Via)
@@ -118,9 +125,20 @@ func TestRankByPrice(t *testing.T) {
 	})
 
 	t.Run("limit truncates the most expensive first", func(t *testing.T) {
-		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 1)
+		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 1, nil)
 		if len(got) != 1 || got[0].Currency.TradeID != "mirror" {
 			t.Fatalf("got = %+v, want just mirror (lowest VWAP)", got)
+		}
+	})
+
+	t.Run("category filter keeps via-routed currencies without their intermediates", func(t *testing.T) {
+		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10, Categories{"essences": true, Uncategorized: true})
+		var order []string
+		for _, cr := range got {
+			order = append(order, cr.Currency.TradeID)
+		}
+		if len(order) != 2 || order[0] != "mirror" || order[1] != "annul" {
+			t.Fatalf("order = %v, want [mirror annul]", order)
 		}
 	})
 }

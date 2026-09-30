@@ -32,5 +32,8 @@ SELECT * FROM currencies WHERE item_path = ? FOR UPDATE;
 -- name: ListCurrencies :many
 SELECT * FROM currencies ORDER BY name;
 
+-- name: ListCategories :many
+SELECT DISTINCT category FROM currencies ORDER BY category;
+
 -- name: ListPlaceholderCurrencies :many
 SELECT * FROM currencies WHERE is_placeholder = 1 ORDER BY discovered_at DESC;

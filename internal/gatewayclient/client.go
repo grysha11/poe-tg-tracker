@@ -44,7 +44,7 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("gateway: %d %s", e.Status, e.Message)
 }
 
-func (c *Client) GetRates(ctx context.Context, league string, view pb.RateView, limit int32) (*pb.GetRatesResponse, error) {
+func (c *Client) GetRates(ctx context.Context, league string, view pb.RateView, limit int32, categories []string) (*pb.GetRatesResponse, error) {
 	q := url.Values{}
 	if league != "" {
 		q.Set("league", league)
@@ -54,6 +54,9 @@ func (c *Client) GetRates(ctx context.Context, league string, view pb.RateView, 
 	}
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(int(limit)))
+	}
+	for _, c := range categories {
+		q.Add("categories", c)
 	}
 
 	var out pb.GetRatesResponse
@@ -69,6 +72,14 @@ func (c *Client) ListLeagues(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return out.GetLeagues(), nil
+}
+
+func (c *Client) ListCategories(ctx context.Context) ([]string, error) {
+	var out pb.ListCategoriesResponse
+	if err := c.get(ctx, "/v1/categories", nil, &out); err != nil {
+		return nil, err
+	}
+	return out.GetCategories(), nil
 }
 
 func (c *Client) Ready(ctx context.Context) error {

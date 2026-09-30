@@ -7,9 +7,10 @@ import (
 )
 
 type Currency struct {
-	ID      string
-	Name    string
-	TradeID string // key into internal/emoji's ids.json
+	ID       string
+	Name     string
+	TradeID  string // key into internal/emoji's ids.json
+	Category string
 }
 
 type Digest struct {

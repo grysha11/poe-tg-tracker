@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -16,6 +18,8 @@ const (
 	outcomeOK      = "ok"
 	outcomeError   = "error"
 	outcomeUnknown = "unknown"
+	// outcomeEmptySelection is a view pressed with every category unselected.
+	outcomeEmptySelection = "empty_selection"
 )
 
 func (a *App) isWhitelisted(userID int64) bool {
@@ -63,20 +67,21 @@ func (a *App) runCommand(ctx context.Context, chatID int64, cmd string) string {
 			"<b>PoE2 rate tracker</b>",
 			"",
 			"Tap a button for the top Currency rates (priced in Divine) from the latest fetched hour.",
+			"Use 🗂 Categories to pick which item categories are ranked.",
 			"",
 			"/rates — show rates",
 			"/leagues — list league strings",
 		}, "\n")
-		return a.send(ctx, chatID, text, ratesKeyboard(volumeView))
+		return a.send(ctx, chatID, text, ratesKeyboard(volumeView, allCategories, 0))
 
 	case "rates":
-		text, err := a.buildRates(ctx, volumeView)
+		text, markup, err := a.buildRates(ctx, volumeView, allCategories)
 		if err != nil {
 			a.log.ErrorContext(ctx, "rates fetch failed", "chat_id", chatID, "err", err)
-			a.send(ctx, chatID, "Couldn't get rates right now. Try again shortly.", ratesKeyboard(volumeView))
+			a.send(ctx, chatID, "Couldn't get rates right now. Try again shortly.", ratesKeyboard(volumeView, allCategories, 0))
 			return outcomeError
 		}
-		return a.send(ctx, chatID, text, ratesKeyboard(volumeView))
+		return a.send(ctx, chatID, text, markup)
 
 	case "leagues":
 		leagues, err := a.gw.ListLeagues(ctx)
@@ -111,44 +116,67 @@ func (a *App) handleCallback(ctx context.Context, cb *telegram.CallbackQuery) {
 	}
 
 	start := time.Now()
-	outcome, viewKey := a.runCallback(ctx, cb)
+	outcome, viewKey, sel := a.runCallback(ctx, cb)
 
-	callbacksTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("view", viewKey), attribute.String("outcome", outcome)))
-	a.log.InfoContext(ctx, "callback handled", "data", cb.Data, "user_id", cb.From.ID, "outcome", outcome, "dur", time.Since(start))
+	callbacksTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("view", viewKey), attribute.String("outcome", outcome), attribute.Bool("filtered", !sel.all)))
+	args := []any{"data", cb.Data, "user_id", cb.From.ID, "outcome", outcome, "dur", time.Since(start)}
+	if !sel.all {
+		args = append(args, "categories", sel.names(a.cats))
+	}
+	a.log.InfoContext(ctx, "callback handled", args...)
 }
 
-func (a *App) runCallback(ctx context.Context, cb *telegram.CallbackQuery) (outcome, viewKey string) {
-	prefix, key, _ := strings.Cut(cb.Data, ":")
-	view, ok := viewByKey(key)
-	if prefix != ratesCallback || !ok || cb.Message == nil {
+func (a *App) runCallback(ctx context.Context, cb *telegram.CallbackQuery) (outcome, viewKey string, sel selection) {
+	prefix, rest, _ := strings.Cut(cb.Data, ":")
+	key, mask, _ := strings.Cut(rest, ":")
+	view, okView := viewByKey(key)
+	sel, okSel := parseSelection(mask)
+	if (prefix != ratesCallback && prefix != categoriesCallback) || !okView || !okSel || cb.Message == nil {
 		a.log.WarnContext(ctx, "unknown callback", "data", cb.Data, "user_id", cb.From.ID, "has_message", cb.Message != nil)
-		if err := a.bot.AnswerCallbackQuery(ctx, cb.ID, ""); err != nil {
-			a.log.ErrorContext(ctx, "answerCallbackQuery failed", "user_id", cb.From.ID, "err", err)
-		}
-		return outcomeUnknown, outcomeUnknown
+		a.answer(ctx, cb, "")
+		return outcomeUnknown, outcomeUnknown, allCategories
 	}
 
 	chatID := cb.Message.Chat.ID
-	text, err := a.buildRates(ctx, view)
-	if err != nil {
-		a.log.ErrorContext(ctx, "callback rates fetch failed", "view", view.key, "chat_id", chatID, "err", err)
-		if err := a.bot.AnswerCallbackQuery(ctx, cb.ID, "Couldn't load rates"); err != nil {
-			a.log.ErrorContext(ctx, "answerCallbackQuery failed", "chat_id", chatID, "err", err)
+	var text string
+	var markup *telegram.InlineKeyboardMarkup
+	var err error
+	toast := ""
+	if prefix == categoriesCallback {
+		viewKey = categoriesViewKey
+		text, markup, err = a.buildCategories(ctx, view, sel)
+	} else {
+		viewKey, toast = view.key, "Updated"
+		text, markup, err = a.buildRates(ctx, view, sel)
+		if errors.Is(err, errNoCategories) {
+			a.answer(ctx, cb, "Select at least one category")
+			return outcomeEmptySelection, viewKey, sel
 		}
-		return outcomeError, view.key
+	}
+	if err != nil {
+		a.log.ErrorContext(ctx, "callback load failed", "data", cb.Data, "chat_id", chatID, "err", err)
+		a.answer(ctx, cb, "Couldn't load data")
+		return outcomeError, viewKey, sel
 	}
 
 	outcome = outcomeOK
-	if err := a.bot.AnswerCallbackQuery(ctx, cb.ID, "Updated"); err != nil {
-		a.log.ErrorContext(ctx, "answerCallbackQuery failed", "chat_id", chatID, "err", err)
+	if !a.answer(ctx, cb, toast) {
 		outcome = outcomeError
 	}
-
-	if err := a.bot.EditMessageText(ctx, chatID, cb.Message.MessageID, text, ratesKeyboard(view)); err != nil {
+	if err := a.bot.EditMessageText(ctx, chatID, cb.Message.MessageID, text, markup); err != nil {
 		a.log.ErrorContext(ctx, "editMessageText failed", "chat_id", chatID, "message_id", cb.Message.MessageID, "err", err)
 		outcome = outcomeError
 	}
-	return outcome, view.key
+	return outcome, viewKey, sel
+}
+
+func (a *App) answer(ctx context.Context, cb *telegram.CallbackQuery, text string) bool {
+	if err := a.bot.AnswerCallbackQuery(ctx, cb.ID, text); err != nil {
+		a.log.ErrorContext(ctx, "answerCallbackQuery failed", "user_id", cb.From.ID, "err", err)
+		return false
+	}
+	return true
 }
 
 func (a *App) send(ctx context.Context, chatID int64, text string, markup *telegram.InlineKeyboardMarkup) string {
@@ -159,11 +187,33 @@ func (a *App) send(ctx context.Context, chatID int64, text string, markup *teleg
 	return outcomeOK
 }
 
-func (a *App) buildRates(ctx context.Context, view rateView) (string, error) {
-	resp, err := view.load(ctx, a)
-	if err != nil {
-		return "", err
+var errNoCategories = errors.New("no categories selected")
+
+func (a *App) buildRates(ctx context.Context, view rateView, sel selection) (string, *telegram.InlineKeyboardMarkup, error) {
+	var cats, names []string
+	if !sel.all {
+		var err error
+		if cats, err = a.categories(ctx); err != nil {
+			return "", nil, err
+		}
+		if sel.count(len(cats)) == 0 {
+			return "", nil, errNoCategories
+		}
+		names = sel.names(cats)
 	}
 
-	return formatRanked(view, resp), nil
+	resp, err := a.gw.GetRates(ctx, a.cfg.League, view.rank, ratesLimit, names)
+	if err != nil {
+		return "", nil, err
+	}
+	return formatRanked(view, resp, names), ratesKeyboard(view, sel, len(cats)), nil
+}
+
+func (a *App) buildCategories(ctx context.Context, view rateView, sel selection) (string, *telegram.InlineKeyboardMarkup, error) {
+	cats, err := a.categories(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	text := fmt.Sprintf("🗂 <b>Categories</b>\n\n%d of %d selected. Toggle categories, then pick a view.", sel.count(len(cats)), len(cats))
+	return text, categoriesKeyboard(view, sel, cats), nil
 }

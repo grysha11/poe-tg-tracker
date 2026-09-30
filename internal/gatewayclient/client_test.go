@@ -41,7 +41,7 @@ func TestGetRates(t *testing.T) {
 		w.Write([]byte(ratesJSON))
 	})
 
-	resp, err := client.GetRates(context.Background(), "Forbidden Rites", pb.RateView_RATE_VIEW_PRICE, 10)
+	resp, err := client.GetRates(context.Background(), "Forbidden Rites", pb.RateView_RATE_VIEW_PRICE, 10, []string{"currency", "uncategorized"})
 	if err != nil {
 		t.Fatalf("GetRates: %v", err)
 	}
@@ -51,6 +51,9 @@ func TestGetRates(t *testing.T) {
 	}
 	if gotQuery.Get("league") != "Forbidden Rites" || gotQuery.Get("view") != "RATE_VIEW_PRICE" || gotQuery.Get("limit") != "10" {
 		t.Errorf("query = %v, want league/view/limit set", gotQuery)
+	}
+	if cats := gotQuery["categories"]; len(cats) != 2 || cats[0] != "currency" || cats[1] != "uncategorized" {
+		t.Errorf("categories = %v, want repeated currency, uncategorized", cats)
 	}
 
 	if resp.GetHourUtc() != 1790359200 {
@@ -75,7 +78,7 @@ func TestGetRates_OmitsUnsetParams(t *testing.T) {
 		w.Write([]byte(ratesJSON))
 	})
 
-	if _, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_UNSPECIFIED, 0); err != nil {
+	if _, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_UNSPECIFIED, 0, nil); err != nil {
 		t.Fatalf("GetRates: %v", err)
 	}
 	if rawQuery != "" {
@@ -89,7 +92,7 @@ func TestGetRates_ErrorCarriesStatusAndMessage(t *testing.T) {
 		w.Write([]byte(`{"code":5,"message":"no snapshots yet for league \"Nope\"","details":[]}`))
 	})
 
-	_, err := client.GetRates(context.Background(), "Nope", pb.RateView_RATE_VIEW_VOLUME, 0)
+	_, err := client.GetRates(context.Background(), "Nope", pb.RateView_RATE_VIEW_VOLUME, 0, nil)
 	var apiErr *gatewayclient.APIError
 	if !errors.As(err, &apiErr) {
 		t.Fatalf("err = %v, want *APIError", err)
@@ -117,6 +120,24 @@ func TestListLeagues(t *testing.T) {
 	}
 }
 
+func TestListCategories(t *testing.T) {
+	client := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/categories" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`{"categories":["currency","runes","uncategorized"]}`))
+	})
+
+	cats, err := client.ListCategories(context.Background())
+	if err != nil {
+		t.Fatalf("ListCategories: %v", err)
+	}
+	if len(cats) != 3 || cats[1] != "runes" {
+		t.Errorf("categories = %v", cats)
+	}
+}
+
 func TestGetRates_RetriesUnavailable(t *testing.T) {
 	var calls int
 	client := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -129,7 +150,7 @@ func TestGetRates_RetriesUnavailable(t *testing.T) {
 		w.Write([]byte(ratesJSON))
 	})
 
-	if _, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_VOLUME, 0); err != nil {
+	if _, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_VOLUME, 0, nil); err != nil {
 		t.Fatalf("GetRates: %v", err)
 	}
 	if calls != 3 {
@@ -145,7 +166,7 @@ func TestGetRates_DoesNotRetryNotFound(t *testing.T) {
 		w.Write([]byte(`{"code":5,"message":"nope"}`))
 	})
 
-	if _, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_VOLUME, 0); err == nil {
+	if _, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_VOLUME, 0, nil); err == nil {
 		t.Fatal("GetRates succeeded, want 404 error")
 	}
 	if calls != 1 {
@@ -160,7 +181,7 @@ func TestGetRates_GivesUpAfterMaxAttempts(t *testing.T) {
 		w.WriteHeader(http.StatusBadGateway)
 	})
 
-	_, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_VOLUME, 0)
+	_, err := client.GetRates(context.Background(), "", pb.RateView_RATE_VIEW_VOLUME, 0, nil)
 	var apiErr *gatewayclient.APIError
 	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusBadGateway {
 		t.Fatalf("err = %v, want *APIError 502", err)

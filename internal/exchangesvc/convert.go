@@ -1,6 +1,8 @@
 package exchangesvc
 
 import (
+	"database/sql"
+
 	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
 	"github.com/grysha11/poe-tg-tracker/internal/exchange"
 	pb "github.com/grysha11/poe-tg-tracker/internal/pb/exchangev1"
@@ -27,8 +29,8 @@ func toSnapshotRows(rows []dbgen.ListSnapshotRatesForHourRow) []exchange.Snapsho
 	out := make([]exchange.SnapshotRow, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, exchange.SnapshotRow{
-			ItemA:         exchange.Currency{ID: r.ItemAPath, Name: r.ItemAName, TradeID: r.ItemATradeID},
-			ItemB:         exchange.Currency{ID: r.ItemBPath, Name: r.ItemBName, TradeID: r.ItemBTradeID},
+			ItemA:         exchange.Currency{ID: r.ItemAPath, Name: r.ItemAName, TradeID: r.ItemATradeID, Category: categoryFromDB(r.ItemACategory)},
+			ItemB:         exchange.Currency{ID: r.ItemBPath, Name: r.ItemBName, TradeID: r.ItemBTradeID, Category: categoryFromDB(r.ItemBCategory)},
 			VolumeA:       uint64(r.VolumeA),
 			VolumeB:       uint64(r.VolumeB),
 			LowestRatioA:  uint64(r.LowestRatioA),
@@ -38,6 +40,13 @@ func toSnapshotRows(rows []dbgen.ListSnapshotRatesForHourRow) []exchange.Snapsho
 		})
 	}
 	return out
+}
+
+func categoryFromDB(c sql.NullString) string {
+	if !c.Valid || c.String == "" {
+		return exchange.Uncategorized
+	}
+	return c.String
 }
 
 func toCurrencyRef(c exchange.Currency) *pb.CurrencyRef {

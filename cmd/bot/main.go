@@ -26,6 +26,9 @@ type App struct {
 	gw  *gatewayclient.Client
 	cfg config.Config
 	log *slog.Logger
+
+	cats   []string
+	catsAt time.Time
 }
 
 func main() {

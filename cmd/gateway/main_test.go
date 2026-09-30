@@ -101,7 +101,7 @@ func get(t *testing.T, url string) (int, map[string]any) {
 func TestGetRates_TranslatesQueryParams(t *testing.T) {
 	ts, fake, _ := newTestGateway(t)
 
-	code, body := get(t, ts.URL+"/v1/rates?league=Forbidden%20Rites&view=RATE_VIEW_PRICE&limit=2")
+	code, body := get(t, ts.URL+"/v1/rates?league=Forbidden%20Rites&view=RATE_VIEW_PRICE&limit=2&categories=currency&categories=runes")
 	if code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body: %v)", code, body)
 	}
@@ -109,6 +109,9 @@ func TestGetRates_TranslatesQueryParams(t *testing.T) {
 	req := fake.last()
 	if req.GetLeague() != "Forbidden Rites" || req.GetView() != pb.RateView_RATE_VIEW_PRICE || req.GetLimit() != 2 {
 		t.Errorf("upstream got league=%q view=%v limit=%d, want Forbidden Rites/PRICE/2", req.GetLeague(), req.GetView(), req.GetLimit())
+	}
+	if cats := req.GetCategories(); len(cats) != 2 || cats[0] != "currency" || cats[1] != "runes" {
+		t.Errorf("upstream got categories=%v, want [currency runes]", cats)
 	}
 
 	rates, _ := body["rates"].([]any)

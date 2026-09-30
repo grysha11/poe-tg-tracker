@@ -63,7 +63,6 @@ func RankByVolume(rows []SnapshotRow, base Currency, limit int, cats Categories)
 	return out
 }
 
-// RatesByID returns every currency priced in base, directly or through one of via, keyed by currency ID.
 func RatesByID(rows []SnapshotRow, base Currency, via []Currency) map[string]CurrencyRate {
 	direct := currencyRatesFrom(rows, base)
 

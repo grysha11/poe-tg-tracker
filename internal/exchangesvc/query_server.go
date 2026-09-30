@@ -109,8 +109,6 @@ func (s *QueryServer) GetRates(ctx context.Context, req *pb.GetRatesRequest) (*p
 	}, nil
 }
 
-// previousRates prices every currency in the latest snapshot hour before hour,
-// however long ago that was.
 func (s *QueryServer) previousRates(ctx context.Context, league string, hour int64, base exchange.Currency, quotes []exchange.Currency) (int64, map[string]exchange.CurrencyRate, error) {
 	prevHour, err := s.Q.PreviousSnapshotHour(ctx, dbgen.PreviousSnapshotHourParams{League: league, HourUtc: hour})
 	if err != nil {

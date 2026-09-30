@@ -20,7 +20,6 @@ func formatValue(v float64) string {
 	}
 }
 
-// formatChange renders the move from prev to cur, both in the direction shown to the user.
 func formatChange(cur, prev float64) string {
 	if prev <= 0 || cur <= 0 {
 		return ""

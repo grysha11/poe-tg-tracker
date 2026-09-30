@@ -181,7 +181,6 @@ func TestGetRates_PreviousHour(t *testing.T) {
 	}
 	divine, chaos, mirror := id("divine"), id("chaos"), id("mirror")
 
-	// The latest earlier hour is 3h back, so it is used even though it is stale.
 	stale := testHour - 3*3600
 	insertSnapshot(t, dbase, testLeague, stale, divine, mirror, 50, 8)
 	insertSnapshot(t, dbase, testLeague, stale, divine, chaos, 10, 1200)

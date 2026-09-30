@@ -20,6 +20,22 @@ func formatValue(v float64) string {
 	}
 }
 
+// formatChange renders the move from prev to cur, both in the direction shown to the user.
+func formatChange(cur, prev float64) string {
+	if prev <= 0 || cur <= 0 {
+		return ""
+	}
+	pct := (cur/prev - 1) * 100
+	switch {
+	case pct >= 0.05:
+		return fmt.Sprintf(" 🟢 +%.1f%%", pct)
+	case pct <= -0.05:
+		return fmt.Sprintf(" 🔴 %.1f%%", pct)
+	default:
+		return " ⚪ 0.0%"
+	}
+}
+
 func formatRanked(view rateView, resp *pb.GetRatesResponse, categories []string) string {
 	var b strings.Builder
 	base := resp.GetBase()
@@ -44,9 +60,12 @@ func formatRanked(view rateView, resp *pb.GetRatesResponse, categories []string)
 			via = fmt.Sprintf(" <i>(via %s)</i>", r.GetVia().GetName())
 		}
 
-		value, low, high := r.GetVwap(), r.GetLow(), r.GetHigh()
+		value, low, high, prev := r.GetVwap(), r.GetLow(), r.GetHigh(), r.GetPrevVwap()
 		left, right := base, r.GetCurrency()
 		if value < 1 {
+			if prev > 0 {
+				prev = 1 / prev
+			}
 			invLow, invHigh := low, high
 			if high > 0 {
 				invLow = 1 / high
@@ -58,8 +77,8 @@ func formatRanked(view rateView, resp *pb.GetRatesResponse, categories []string)
 			left, right = right, left
 		}
 
-		fmt.Fprintf(&b, "%s 1 %s = <b>%s</b> %s %s%s\n",
-			emoji.Tag(left.GetTradeId()), left.GetName(), formatValue(value), emoji.Tag(right.GetTradeId()), right.GetName(), via)
+		fmt.Fprintf(&b, "%s 1 %s = <b>%s</b> %s %s%s%s\n",
+			emoji.Tag(left.GetTradeId()), left.GetName(), formatValue(value), emoji.Tag(right.GetTradeId()), right.GetName(), formatChange(value, prev), via)
 		if r.GetVia() == nil {
 			fmt.Fprintf(&b, "<i>range %s–%s · %d %s traded</i>\n\n", formatValue(low), formatValue(high), r.GetBaseVolume(), base.GetName())
 		} else {
@@ -67,6 +86,9 @@ func formatRanked(view rateView, resp *pb.GetRatesResponse, categories []string)
 		}
 	}
 
+	if prev := resp.GetPrevHourUtc(); prev != 0 {
+		fmt.Fprintf(&b, "Change vs %s UTC\n", time.Unix(prev, 0).UTC().Format("15:04 Jan 2"))
+	}
 	if last := resp.GetLastFetchUtc(); last != 0 {
 		fmt.Fprintf(&b, "Last fetch time: %s UTC\n", time.Unix(last, 0).UTC().Format("15:04 Jan 2"))
 	}

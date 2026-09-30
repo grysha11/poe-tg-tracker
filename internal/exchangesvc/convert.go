@@ -65,7 +65,7 @@ func toDefaultRatePairs(pairs []ratePair) []*pb.DefaultRatePair {
 	return out
 }
 
-func toRankedRates(ranked []exchange.CurrencyRate) []*pb.RankedRate {
+func toRankedRates(ranked []exchange.CurrencyRate, prev map[string]exchange.CurrencyRate) []*pb.RankedRate {
 	out := make([]*pb.RankedRate, 0, len(ranked))
 	for _, cr := range ranked {
 		rr := &pb.RankedRate{
@@ -75,6 +75,7 @@ func toRankedRates(ranked []exchange.CurrencyRate) []*pb.RankedRate {
 			High:        cr.Rate.High,
 			BaseVolume:  cr.Rate.BaseVol,
 			QuoteVolume: cr.Rate.QuoteVol,
+			PrevVwap:    prev[cr.Currency.ID].Rate.VWAP,
 		}
 		if cr.Via != nil {
 			rr.Via = toCurrencyRef(*cr.Via)

@@ -114,3 +114,19 @@ func (q *Queries) ListSnapshotsForHour(ctx context.Context, arg ListSnapshotsFor
 	}
 	return items, nil
 }
+
+const previousSnapshotHour = `-- name: PreviousSnapshotHour :one
+SELECT CAST(COALESCE(MAX(hour_utc), 0) AS SIGNED) AS hour_utc FROM market_snapshots WHERE league = ? AND hour_utc < ?
+`
+
+type PreviousSnapshotHourParams struct {
+	League  string `json:"league"`
+	HourUtc int64  `json:"hour_utc"`
+}
+
+func (q *Queries) PreviousSnapshotHour(ctx context.Context, arg PreviousSnapshotHourParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, previousSnapshotHour, arg.League, arg.HourUtc)
+	var hour_utc int64
+	err := row.Scan(&hour_utc)
+	return hour_utc, err
+}

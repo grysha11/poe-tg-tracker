@@ -18,3 +18,6 @@ SELECT CAST(COALESCE(MAX(hour_utc), 0) AS SIGNED) AS hour_utc FROM market_snapsh
 
 -- name: ListSnapshotsForHour :many
 SELECT * FROM market_snapshots WHERE hour_utc = ? AND league = ?;
+
+-- name: PreviousSnapshotHour :one
+SELECT CAST(COALESCE(MAX(hour_utc), 0) AS SIGNED) AS hour_utc FROM market_snapshots WHERE league = ? AND hour_utc < ?;

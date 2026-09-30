@@ -115,6 +115,16 @@ func TestRankByPrice(t *testing.T) {
 		}
 	})
 
+	t.Run("RatesByID keeps every currency regardless of limit", func(t *testing.T) {
+		got := RatesByID(rows, divine, []Currency{chaos, exalt})
+		if len(got) != 4 {
+			t.Fatalf("len = %d, want 4: %+v", len(got), got)
+		}
+		if got[annul.ID].Rate.VWAP != 75 || got[mirror.ID].Via != nil {
+			t.Fatalf("annul = %+v, mirror = %+v", got[annul.ID], got[mirror.ID])
+		}
+	})
+
 	t.Run("direct rate is never overridden by a via rate", func(t *testing.T) {
 		got := RankByPrice(rows, divine, []Currency{chaos, exalt}, 10, nil)
 		for _, cr := range got {

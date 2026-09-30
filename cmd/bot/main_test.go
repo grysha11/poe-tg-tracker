@@ -20,13 +20,14 @@ const priceRatesJSON = `{
   "base": {"itemPath": "Metadata/Items/Currency/CurrencyModValues", "name": "Divine Orb", "tradeId": "divine"},
   "rates": [
     {"currency": {"itemPath": "Metadata/Items/Currency/CurrencyDuplicate", "name": "Mirror of Kalandra", "tradeId": "mirror"},
-     "vwap": 0.00025, "low": 0.0002, "high": 0.0004, "baseVolume": "119704", "quoteVolume": "29", "via": null},
+     "vwap": 0.00025, "low": 0.0002, "high": 0.0004, "baseVolume": "119704", "quoteVolume": "29", "via": null, "prevVwap": 0.0002},
     {"currency": {"itemPath": "Metadata/Items/Currency/CurrencyAnnulment", "name": "Orb of Annulment", "tradeId": "annul"},
-     "vwap": 75, "low": 70, "high": 80, "baseVolume": "100", "quoteVolume": "50",
+     "vwap": 75, "low": 70, "high": 80, "baseVolume": "100", "quoteVolume": "50", "prevVwap": 60,
      "via": {"itemPath": "Metadata/Items/Currency/CurrencyRerollRare", "name": "Chaos Orb", "tradeId": "chaos"}}
   ],
   "hourUtc": "1790359200",
   "lastFetchUtc": "1790362863",
+  "prevHourUtc": "1790348400",
   "league": "Forbidden Rites"
 }`
 
@@ -59,14 +60,32 @@ func TestBuildRates_FormatsGatewayResponse(t *testing.T) {
 	for _, want := range []string{
 		"💰 <b>Most expensive — Forbidden Rites</b>",
 		"1 Mirror of Kalandra = <b>4000</b>",
+		"Divine Orb 🔴 -20.0%",
 		"range 2500–5000 · 119704 Divine Orb traded",
 		"1 Divine Orb = <b>75.0</b>",
-		"Orb of Annulment <i>(via Chaos Orb)</i>",
+		"Orb of Annulment 🟢 +25.0% <i>(via Chaos Orb)</i>",
+		"Change vs 15:00 Sep 25 UTC",
 		"<i>range 70.0–80.0 Divine Orb</i>",
 		"Last fetch time: 19:01 Sep 25 UTC",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("message missing %q\n--- message ---\n%s", want, text)
+		}
+	}
+}
+
+func TestFormatChange(t *testing.T) {
+	for _, tc := range []struct {
+		cur, prev float64
+		want      string
+	}{
+		{110, 100, " 🟢 +10.0%"},
+		{90, 100, " 🔴 -10.0%"},
+		{100.01, 100, " ⚪ 0.0%"},
+		{100, 0, ""},
+	} {
+		if got := formatChange(tc.cur, tc.prev); got != tc.want {
+			t.Errorf("formatChange(%v, %v) = %q, want %q", tc.cur, tc.prev, got, tc.want)
 		}
 	}
 }

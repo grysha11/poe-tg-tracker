@@ -8,8 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grysha11/poe-tg-tracker/internal/telegram"
 )
@@ -20,7 +23,18 @@ const (
 	outcomeUnknown = "unknown"
 	// outcomeEmptySelection is a view pressed with every category unselected.
 	outcomeEmptySelection = "empty_selection"
+	outcomeRejected       = "rejected"
 )
+
+var tracer = otel.Tracer("poetracker/bot")
+
+func finishSpan(span trace.Span, outcome string) {
+	span.SetAttributes(attribute.String("bot.outcome", outcome))
+	if outcome == outcomeError {
+		span.SetStatus(codes.Error, "handler failed")
+	}
+	span.End()
+}
 
 func (a *App) isWhitelisted(userID int64) bool {
 	return slices.Contains(a.cfg.Whitelist, userID)
@@ -35,6 +49,10 @@ func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
 		if msg.From != nil {
 			uid = msg.From.ID
 		}
+		ctx, span := tracer.Start(ctx, "bot.message", trace.WithAttributes(
+			attribute.Int64("telegram.user_id", uid), attribute.Int64("telegram.chat_id", msg.Chat.ID)))
+		defer finishSpan(span, outcomeRejected)
+
 		rejectedTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("kind", "message")))
 		a.log.WarnContext(ctx, "rejected message: user not whitelisted", "user_id", uid, "chat_id", msg.Chat.ID)
 		a.send(ctx, msg.Chat.ID, "You're not authorized to use this bot.", nil)
@@ -47,6 +65,9 @@ func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
 		return
 	}
 
+	ctx, span := tracer.Start(ctx, "bot.message", trace.WithAttributes(
+		attribute.Int64("telegram.user_id", msg.From.ID), attribute.Int64("telegram.chat_id", msg.Chat.ID)))
+
 	start := time.Now()
 	a.log.InfoContext(ctx, "command received", "command", cmd, "user_id", msg.From.ID, "chat_id", msg.Chat.ID)
 
@@ -56,6 +77,9 @@ func (a *App) handleMessage(ctx context.Context, msg *telegram.Message) {
 	if outcome == outcomeUnknown {
 		label = outcomeUnknown
 	}
+	span.SetAttributes(attribute.String("bot.command", label))
+	defer finishSpan(span, outcome)
+
 	commandsTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("command", label), attribute.String("outcome", outcome)))
 	a.log.InfoContext(ctx, "command handled", "command", cmd, "user_id", msg.From.ID, "chat_id", msg.Chat.ID, "outcome", outcome, "dur", time.Since(start))
 }
@@ -107,6 +131,9 @@ func (a *App) handleCallback(ctx context.Context, cb *telegram.CallbackQuery) {
 		if cb.From != nil {
 			uid = cb.From.ID
 		}
+		ctx, span := tracer.Start(ctx, "bot.callback", trace.WithAttributes(attribute.Int64("telegram.user_id", uid)))
+		defer finishSpan(span, outcomeRejected)
+
 		rejectedTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("kind", "callback")))
 		a.log.WarnContext(ctx, "rejected callback: user not whitelisted", "user_id", uid)
 		if err := a.bot.AnswerCallbackQuery(ctx, cb.ID, "Not authorized"); err != nil {
@@ -115,8 +142,13 @@ func (a *App) handleCallback(ctx context.Context, cb *telegram.CallbackQuery) {
 		return
 	}
 
+	ctx, span := tracer.Start(ctx, "bot.callback", trace.WithAttributes(attribute.Int64("telegram.user_id", cb.From.ID)))
+
 	start := time.Now()
 	outcome, viewKey, sel := a.runCallback(ctx, cb)
+
+	span.SetAttributes(attribute.String("bot.view", viewKey), attribute.Bool("bot.filtered", !sel.all))
+	defer finishSpan(span, outcome)
 
 	callbacksTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("view", viewKey), attribute.String("outcome", outcome), attribute.Bool("filtered", !sel.all)))

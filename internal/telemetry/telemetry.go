@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -70,12 +71,20 @@ func Setup(ctx context.Context, service string, opts ...Option) (*Telemetry, err
 	otel.SetMeterProvider(mp)
 	t.shutdowns = append(t.shutdowns, mp.Shutdown)
 
+	tp, err := newTracerProvider(ctx, res)
+	if err != nil {
+		return nil, err
+	}
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+	t.shutdowns = append(t.shutdowns, tp.Shutdown)
+
 	level := parseLevel(os.Getenv("LOG_LEVEL"))
-	stdout := slog.NewJSONHandler(o.logWriter, &slog.HandlerOptions{Level: level}).
-		WithAttrs([]slog.Attr{slog.String("service", service), slog.String("service_version", version)})
+	stdout := &traceHandler{Handler: slog.NewJSONHandler(o.logWriter, &slog.HandlerOptions{Level: level}).
+		WithAttrs([]slog.Attr{slog.String("service", service), slog.String("service_version", version)})}
 
 	handler := slog.Handler(stdout)
-	if otlpLogsEnabled() {
+	if otlpEnabled("LOGS") {
 		exporter, err := otlploggrpc.New(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("otlp log exporter: %w", err)
@@ -150,8 +159,8 @@ func Version() string {
 	return "dev"
 }
 
-func otlpLogsEnabled() bool {
-	return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" || os.Getenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT") != ""
+func otlpEnabled(signal string) bool {
+	return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" || os.Getenv("OTEL_EXPORTER_OTLP_"+signal+"_ENDPOINT") != ""
 }
 
 func parseLevel(s string) slog.Level {

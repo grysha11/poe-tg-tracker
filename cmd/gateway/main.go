@@ -115,7 +115,10 @@ func newHandler(ctx context.Context, conn *grpc.ClientConn, log *slog.Logger) (h
 	})
 	mux.Handle("/v1/", gw)
 
-	return otelhttp.NewHandler(logRequests(log, mux), "gateway", otelhttp.WithFilter(notProbe)), nil
+	return otelhttp.NewHandler(logRequests(log, mux), "gateway",
+		otelhttp.WithFilter(notProbe),
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string { return r.Method + " " + r.URL.Path }),
+	), nil
 }
 
 func notProbe(r *http.Request) bool {

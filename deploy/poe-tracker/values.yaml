@@ -37,8 +37,7 @@ metrics:
   serviceMonitor:
     enabled: true
     interval: 30s
-    labels:
-      release: kube-prometheus-stack
+    labels: {}
 otel:
   endpoint: ""
 resources:

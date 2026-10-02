@@ -1,0 +1,64 @@
+name: test
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "deploy/**"
+      - "**.md"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "deploy/**"
+      - "**.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: core
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ptest"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      TEST_DB_DSN: "root:test@tcp(127.0.0.1:3307)/core?parseTime=false&charset=utf8mb4"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: migrations apply cleanly
+        run: go run ./cmd/migrate
+        env:
+          DB_DSN: ${{ env.TEST_DB_DSN }}
+
+      - name: go test
+        run: go test -race -p 1 ./...

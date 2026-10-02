@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/grysha11/poe-tg-tracker
-  tag: 0599565691cc6232f23fb67dc36ac5bc0582b5c4
+  tag: 30fc46d0eeb2b6f0a8389cf6cfd5a9be028eab74
   pullPolicy: IfNotPresent
 imagePullSecrets:
   - name: ghcr-pull

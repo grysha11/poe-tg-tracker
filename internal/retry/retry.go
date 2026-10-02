@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Policy struct {
@@ -76,6 +77,12 @@ func Do(ctx context.Context, client string, p Policy, fn func(context.Context) e
 		}
 
 		record(ctx, client, "retry")
+		trace.SpanFromContext(ctx).AddEvent("retry", trace.WithAttributes(
+			attribute.String("client", client),
+			attribute.Int("attempt", attempt),
+			attribute.String("wait", wait.String()),
+			attribute.String("error", re.err.Error()),
+		))
 		slog.WarnContext(ctx, "retrying", "client", client, "attempt", attempt, "max_attempts", p.Attempts, "wait", wait, "err", re.err)
 
 		timer := time.NewTimer(wait)

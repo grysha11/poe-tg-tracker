@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 
@@ -62,6 +63,8 @@ func run() int {
 	defer conn.Close()
 	client := pb.NewExchangeAdminServiceClient(conn)
 
+	ctx, span := otel.Tracer("poetracker/curate").Start(ctx, "curate "+command)
+
 	start := time.Now()
 	switch command {
 	case "list":
@@ -73,16 +76,17 @@ func run() int {
 	case "bootstrap":
 		err = runBootstrap(ctx, client)
 	}
+	telemetry.EndSpan(span, err)
 
 	switch {
 	case errors.Is(err, errBadArgs):
 		return 1
 	case err != nil:
-		log.Error("curate command failed", "addr", addr, "code", status.Code(err).String(), "err", err, "dur", time.Since(start))
+		log.ErrorContext(ctx, "curate command failed", "addr", addr, "code", status.Code(err).String(), "err", err, "dur", time.Since(start))
 		fmt.Fprintf(os.Stderr, "curate: %s failed: %s\n", command, status.Convert(err).Message())
 		return 1
 	}
-	log.Info("curate command ok", "addr", addr, "dur", time.Since(start))
+	log.InfoContext(ctx, "curate command ok", "addr", addr, "dur", time.Since(start))
 	return 0
 }
 

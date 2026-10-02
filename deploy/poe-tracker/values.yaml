@@ -37,10 +37,9 @@ metrics:
   serviceMonitor:
     enabled: true
     interval: 30s
-    labels:
-      release: kube-prometheus-stack
+    labels: {}
 otel:
-  endpoint: ""
+  endpoint: "http://alloy.monitoring.svc.cluster.local:4317"
 resources:
   requests:
     cpu: 50m

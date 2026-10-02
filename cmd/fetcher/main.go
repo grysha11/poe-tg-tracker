@@ -12,6 +12,11 @@ import (
 	"os"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/grysha11/poe-tg-tracker/internal/config"
 	"github.com/grysha11/poe-tg-tracker/internal/db"
 	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
@@ -26,7 +31,9 @@ func main() {
 	os.Exit(run())
 }
 
-func run() int {
+var tracer = otel.Tracer("poetracker/fetcher")
+
+func run() (code int) {
 	hourFlag := flag.Int64("hour", 0, "unix timestamp of hour to fetch (default: last settled hour)")
 	flag.Parse()
 
@@ -59,30 +66,40 @@ func run() int {
 	}
 	hourStr := hour.Format(time.RFC3339)
 	log = log.With("hour", hourStr)
-	log.Info("fetch started", "backfill", *hourFlag != 0)
+
+	ctx, span := tracer.Start(context.Background(), "fetcher.run", trace.WithAttributes(
+		attribute.String("fetch.hour", hourStr), attribute.Bool("fetch.backfill", *hourFlag != 0)))
+	defer func() {
+		if code != 0 {
+			span.SetStatus(codes.Error, "fetch run failed")
+		}
+		span.End()
+	}()
+
+	log.InfoContext(ctx, "fetch started", "backfill", *hourFlag != 0)
 
 	runStart := time.Now()
 	client := exchange.NewClient(userAgent)
 
 	dbase, err := db.Open(dbDSN)
 	if err != nil {
-		log.Error("db open failed", "err", err)
+		log.ErrorContext(ctx, "db open failed", "err", err)
 		return 1
 	}
 	defer dbase.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	var prevHash string
 	switch prev, err := dbase.Q.LatestFetchBefore(ctx, hour.Unix()); {
 	case err == nil:
 		prevHash = prev.PayloadSha256
-		log.Debug("previous fetch loaded", "prev_hour", time.Unix(prev.HourUtc, 0).UTC().Format(time.RFC3339), "prev_sha256", prevHash)
+		log.DebugContext(ctx, "previous fetch loaded", "prev_hour", time.Unix(prev.HourUtc, 0).UTC().Format(time.RFC3339), "prev_sha256", prevHash)
 	case errors.Is(err, sql.ErrNoRows):
-		log.Info("no previous fetch, skipping stale-payload check")
+		log.InfoContext(ctx, "no previous fetch, skipping stale-payload check")
 	default:
-		log.Error("load previous fetch failed", "err", err)
+		log.ErrorContext(ctx, "load previous fetch failed", "err", err)
 		return 1
 	}
 
@@ -91,50 +108,67 @@ func run() int {
 		sum string
 	)
 	fetchStart := time.Now()
+	fetchCtx, fetchSpan := tracer.Start(ctx, "fetch")
 	for attempt, wait := range backoff {
 		if wait > 0 {
 			select {
 			case <-ctx.Done():
-				log.Error("fetch deadline exceeded while waiting to retry", "attempt", attempt+1, "err", ctx.Err())
+				telemetry.EndSpan(fetchSpan, ctx.Err())
+				log.ErrorContext(ctx, "fetch deadline exceeded while waiting to retry", "attempt", attempt+1, "err", ctx.Err())
 				return 1
 			case <-time.After(wait):
 			}
 		}
 		attemptStart := time.Now()
-		raw, err = client.FetchRaw(ctx, hour.Unix())
+		raw, err = client.FetchRaw(fetchCtx, hour.Unix())
 		if err != nil {
-			log.Warn("fetch attempt failed", "attempt", attempt+1, "max_attempts", len(backoff), "dur", time.Since(attemptStart), "err", err)
+			fetchSpan.AddEvent("attempt failed", trace.WithAttributes(attribute.Int("attempt", attempt+1), attribute.String("error", err.Error())))
+			log.WarnContext(ctx, "fetch attempt failed", "attempt", attempt+1, "max_attempts", len(backoff), "dur", time.Since(attemptStart), "err", err)
 			continue
 		}
 		hashed := sha256.Sum256(raw)
 		sum = hex.EncodeToString(hashed[:])
 		if prevHash != "" && sum == prevHash {
 			err = fmt.Errorf("unchanged data since last fetch")
-			log.Warn("fetch attempt returned unchanged data, retrying", "attempt", attempt+1, "max_attempts", len(backoff), "sha256", sum)
+			fetchSpan.AddEvent("unchanged data", trace.WithAttributes(attribute.Int("attempt", attempt+1)))
+			log.WarnContext(ctx, "fetch attempt returned unchanged data, retrying", "attempt", attempt+1, "max_attempts", len(backoff), "sha256", sum)
 			continue
 		}
-		log.Info("fetch attempt succeeded", "attempt", attempt+1, "bytes", len(raw), "sha256", sum, "dur", time.Since(attemptStart))
+		fetchSpan.SetAttributes(attribute.Int("fetch.attempts", attempt+1), attribute.Int("fetch.bytes", len(raw)))
+		log.InfoContext(ctx, "fetch attempt succeeded", "attempt", attempt+1, "bytes", len(raw), "sha256", sum, "dur", time.Since(attemptStart))
 		break
 	}
+	telemetry.EndSpan(fetchSpan, err)
 	if err != nil {
-		log.Error("fetch failed, giving up", "attempts", len(backoff), "dur", time.Since(fetchStart), "err", err)
+		log.ErrorContext(ctx, "fetch failed, giving up", "attempts", len(backoff), "dur", time.Since(fetchStart), "err", err)
 		return 1
 	}
 	fetchDur := time.Since(fetchStart)
 
 	decodeStart := time.Now()
+	_, decodeSpan := tracer.Start(ctx, "decode")
 	var digest exchange.Digest
-	if err := json.Unmarshal(raw, &digest); err != nil {
-		log.Error("decode digest failed", "bytes", len(raw), "err", err)
+	err = json.Unmarshal(raw, &digest)
+	telemetry.EndSpan(decodeSpan, err)
+	if err != nil {
+		log.ErrorContext(ctx, "decode digest failed", "bytes", len(raw), "err", err)
 		return 1
 	}
 	decodeDur := time.Since(decodeStart)
 
 	ingestStart := time.Now()
 	fetchedAt := time.Now()
-	stats, err := ingest.Run(ctx, dbase, log, &digest, hour, fetchedAt)
+	ingestCtx, ingestSpan := tracer.Start(ctx, "ingest")
+	stats, err := ingest.Run(ingestCtx, dbase, log, &digest, hour, fetchedAt)
+	ingestSpan.SetAttributes(
+		attribute.Int("ingest.markets_seen", stats.MarketsSeen),
+		attribute.Int("ingest.markets_inserted", stats.MarketsInserted),
+		attribute.Int("ingest.markets_skipped", stats.MarketsSkipped),
+		attribute.Int("ingest.new_currencies", len(stats.NewCurrencies)),
+	)
+	telemetry.EndSpan(ingestSpan, err)
 	if err != nil {
-		log.Error("ingest failed", "markets_seen", stats.MarketsSeen, "markets_inserted", stats.MarketsInserted, "dur", time.Since(ingestStart), "err", err)
+		log.ErrorContext(ctx, "ingest failed", "markets_seen", stats.MarketsSeen, "markets_inserted", stats.MarketsInserted, "dur", time.Since(ingestStart), "err", err)
 		return 1
 	}
 	ingestDur := time.Since(ingestStart)
@@ -145,11 +179,11 @@ func run() int {
 		PayloadSha256: sum,
 		FetchedAt:     fetchedAt.Unix(),
 	}); err != nil {
-		log.Error("record fetch failed", "err", err)
+		log.ErrorContext(ctx, "record fetch failed", "err", err)
 		return 1
 	}
 
-	log.Info("fetch complete",
+	log.InfoContext(ctx, "fetch complete",
 		"bytes", len(raw),
 		"markets_seen", stats.MarketsSeen,
 		"markets_inserted", stats.MarketsInserted,

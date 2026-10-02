@@ -6,6 +6,9 @@ import (
 	"os"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/grysha11/poe-tg-tracker/internal/config"
 	"github.com/grysha11/poe-tg-tracker/internal/db"
 	"github.com/grysha11/poe-tg-tracker/internal/telemetry"
@@ -35,20 +38,25 @@ func run() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
+	ctx, span := otel.Tracer("poetracker/migrate").Start(ctx, "migrate")
+
 	start := time.Now()
-	log.Info("migrate started")
+	log.InfoContext(ctx, "migrate started")
 	results, version, err := db.Migrate(ctx, dbDSN)
+	span.SetAttributes(attribute.Int("migrate.applied", len(results)), attribute.Int64("migrate.version", version))
+	telemetry.EndSpan(span, err)
+
 	for _, r := range results {
 		if r.Error != nil {
-			log.Error("migration failed", "version", r.Source.Version, "file", r.Source.Path, "duration", r.Duration, "err", r.Error)
+			log.ErrorContext(ctx, "migration failed", "version", r.Source.Version, "file", r.Source.Path, "duration", r.Duration, "err", r.Error)
 			continue
 		}
-		log.Info("migration applied", "version", r.Source.Version, "file", r.Source.Path, "duration", r.Duration)
+		log.InfoContext(ctx, "migration applied", "version", r.Source.Version, "file", r.Source.Path, "duration", r.Duration)
 	}
 	if err != nil {
-		log.Error("migrate failed", "err", err, "dur", time.Since(start))
+		log.ErrorContext(ctx, "migrate failed", "err", err, "dur", time.Since(start))
 		return 1
 	}
-	log.Info("migrate complete", "applied", len(results), "version", version, "dur", time.Since(start))
+	log.InfoContext(ctx, "migrate complete", "applied", len(results), "version", version, "dur", time.Since(start))
 	return 0
 }

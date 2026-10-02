@@ -18,8 +18,10 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grysha11/poe-tg-tracker/internal/retry"
+	"github.com/grysha11/poe-tg-tracker/internal/telemetry"
 )
 
 const (
@@ -32,6 +34,7 @@ var sendPolicy = retry.Policy{Attempts: 3, Base: 500 * time.Millisecond, Max: 5 
 var (
 	requestsTotal   metric.Int64Counter
 	requestDuration metric.Float64Histogram
+	tracer          = otel.Tracer("poetracker/telegram")
 )
 
 func init() {
@@ -123,7 +126,15 @@ type apiResponse struct {
 	} `json:"parameters"`
 }
 
-func (b *Bot) do(ctx context.Context, method string, payload any) (json.RawMessage, error) {
+func (b *Bot) do(ctx context.Context, method string, payload any) (result json.RawMessage, err error) {
+	if telemetry.HasSpan(ctx) {
+		var span trace.Span
+		ctx, span = tracer.Start(ctx, "telegram "+method,
+			trace.WithSpanKind(trace.SpanKindClient),
+			trace.WithAttributes(attribute.String("telegram.method", method)))
+		defer func() { telemetry.EndSpan(span, err) }()
+	}
+
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("telegram %s: encode: %w", method, err)
@@ -131,7 +142,7 @@ func (b *Bot) do(ctx context.Context, method string, payload any) (json.RawMessa
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.base+"/bot"+b.token+"/"+method, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("telegram %s: build request: %w", method, err)
+		return nil, redact(method, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -144,6 +155,7 @@ func (b *Bot) do(ctx context.Context, method string, payload any) (json.RawMessa
 		return nil, err
 	}
 	defer resp.Body.Close()
+	trace.SpanFromContext(ctx).SetAttributes(attribute.Int("http.response.status_code", resp.StatusCode))
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxRespBody))
 	b.observe(ctx, method, strconv.Itoa(resp.StatusCode), start)

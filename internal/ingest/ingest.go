@@ -65,7 +65,7 @@ func Run(ctx context.Context, dbase *db.DB, log *slog.Logger, digest *exchange.D
 
 		byPath[itemPath] = c
 		stats.NewCurrencies = append(stats.NewCurrencies, itemPath)
-		log.Warn("new currency discovered", "item_path", itemPath, "currency_id", c.CurrencyID)
+		log.WarnContext(ctx, "new currency discovered", "item_path", itemPath, "currency_id", c.CurrencyID)
 		return c.CurrencyID, nil
 	}
 
@@ -74,7 +74,7 @@ func Run(ctx context.Context, dbase *db.DB, log *slog.Logger, digest *exchange.D
 
 		if len(m.MarketPair) != 2 {
 			stats.MarketsSkipped++
-			log.Warn("skipping malformed market", "market_id", m.MarketID, "pair_len", len(m.MarketPair))
+			log.WarnContext(ctx, "skipping malformed market", "market_id", m.MarketID, "pair_len", len(m.MarketPair))
 			continue
 		}
 

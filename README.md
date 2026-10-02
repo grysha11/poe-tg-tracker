@@ -80,9 +80,35 @@ All binaries go through `internal/telemetry` (OpenTelemetry SDK).
 
 JSON on stdout, always, so `kubectl logs` and Argo CD keep working. Every line carries `service` and `service_version` (the image tag). `curate` writes its logs to stderr so its table output stays clean.
 
-When `OTEL_EXPORTER_OTLP_ENDPOINT` is set (chart: `otel.endpoint`, e.g. `http://alloy.<namespace>.svc:4317`), the same records are also exported over OTLP/gRPC to the collector (Loki). Don't let the collector tail these pods' stdout as well, or every line lands twice.
+When `OTEL_EXPORTER_OTLP_ENDPOINT` is set (chart: `otel.endpoint`, e.g. `http://alloy.monitoring.svc.cluster.local:4317`), the same records are also exported over OTLP/gRPC to the collector (Alloy), which forwards them to Loki. Don't let the collector tail these pods' stdout as well, or every line lands twice.
 
 `LOG_LEVEL`: `debug` adds per-request detail (outbound HTTP calls, Telegram API calls, resolved rates, poe2scout pages, health checks, probes). `info` is lifecycle and business events, `warn` is retries and rejected requests, `error` is failed operations.
+
+Lines logged inside a request also carry `trace_id` and `span_id`, so one request can be followed across bot, gateway and exchange-service with `grep`, even without a trace backend.
+
+### Traces
+
+Spans are exported over OTLP/gRPC to the same `OTEL_EXPORTER_OTLP_ENDPOINT` as logs (Alloy forwards them to Tempo). Without an endpoint, spans are still created, so logs get trace IDs, but nothing is exported. Sampling is always-on by default; override with `OTEL_TRACES_SAMPLER`.
+
+One `/rates` tap is one trace:
+
+```
+bot.callback                          (bot)
+├── GET                               bot → gateway
+│   └── GET /v1/rates                 (gateway)
+│       └── exchange.v1.ExchangeQueryService/GetRates   gateway → exchange-service
+│           ├── ListDefaultRatePairs  SQL, named by sqlc query
+│           └── ListSnapshotRatesForHour
+├── telegram answerCallbackQuery
+└── telegram editMessageText
+```
+
+- **bot**: one root span per command (`bot.message`) and per button tap (`bot.callback`), with the command or view and the outcome. Telegram calls are child spans named by API method, never by URL, so the bot token is not recorded.
+- **fetcher**: `fetcher.run` with `fetch`, `decode` and `ingest` children; failed attempts are span events.
+- **curate / migrate**: one root span per run.
+- **Retries** show up as `retry` events on the span that was retried.
+
+Not traced, to keep noise out: health checks, probes, the `getUpdates` long poll, the 10s DB health ping, the scrape-time gauge queries, and the per-market `InsertMarketSnapshot` statements (~2,800 per fetch).
 
 ### Metrics
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 
 	dbgen "github.com/grysha11/poe-tg-tracker/internal/db/gen"
 	"github.com/grysha11/poe-tg-tracker/internal/retry"
+	"github.com/grysha11/poe-tg-tracker/internal/telemetry"
 )
 
 const defaultConnectTimeout = 60 * time.Second
@@ -41,6 +43,13 @@ func Open(dsn string) (*DB, error) {
 	sqlDB, err := otelsql.Open("mysql", dsn,
 		otelsql.WithAttributes(dbAttrs...),
 		otelsql.WithInstrumentAttributesGetter(queryNameAttr),
+		otelsql.WithSpanNameFormatter(spanName),
+		otelsql.WithSpanOptions(otelsql.SpanOptions{
+			OmitConnResetSession: true,
+			OmitConnectorConnect: true,
+			OmitRows:             true,
+			SpanFilter:           spanFilter,
+		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("open mysql: %w", err)
@@ -98,6 +107,19 @@ func queryNameAttr(_ context.Context, _ otelsql.Method, query string, _ []driver
 		return []attribute.KeyValue{attribute.String("db.query.name", name)}
 	}
 	return nil
+}
+
+var untracedQueries = []string{"InsertMarketSnapshot"}
+
+func spanName(_ context.Context, method otelsql.Method, query string) string {
+	if name := QueryName(query); name != "" {
+		return name
+	}
+	return string(method)
+}
+
+func spanFilter(ctx context.Context, _ otelsql.Method, query string, _ []driver.NamedValue) bool {
+	return telemetry.HasSpan(ctx) && !slices.Contains(untracedQueries, QueryName(query))
 }
 
 func QueryName(query string) string {

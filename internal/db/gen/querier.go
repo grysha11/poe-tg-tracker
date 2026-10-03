@@ -23,6 +23,7 @@ type Querier interface {
 	ListDefaultRatePairs(ctx context.Context) ([]ListDefaultRatePairsRow, error)
 	ListPlaceholderCurrencies(ctx context.Context) ([]Currency, error)
 	ListSnapshotRatesForHour(ctx context.Context, arg ListSnapshotRatesForHourParams) ([]ListSnapshotRatesForHourRow, error)
+	ListSnapshotRatesInRange(ctx context.Context, arg ListSnapshotRatesInRangeParams) ([]ListSnapshotRatesInRangeRow, error)
 	ListSnapshotsForHour(ctx context.Context, arg ListSnapshotsForHourParams) ([]MarketSnapshot, error)
 	PreviousSnapshotHour(ctx context.Context, arg PreviousSnapshotHourParams) (int64, error)
 	RecordFetch(ctx context.Context, arg RecordFetchParams) error

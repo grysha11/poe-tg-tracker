@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -35,6 +36,41 @@ func formatChange(cur, prev float64) string {
 	}
 }
 
+var sparkBlocks = []rune("▁▂▃▄▅▆▇█")
+
+func sparkline(trend []float64, flip bool) string {
+	vals := make([]float64, len(trend))
+	last, points := 0.0, 0
+	lo, hi := math.Inf(1), math.Inf(-1)
+	for i, v := range trend {
+		if v > 0 {
+			if flip {
+				v = 1 / v
+			}
+			last = v
+			points++
+			lo, hi = min(lo, v), max(hi, v)
+		}
+		vals[i] = last
+	}
+	if points < 2 {
+		return ""
+	}
+
+	out := make([]rune, len(vals))
+	for i, v := range vals {
+		switch {
+		case v == 0:
+			out[i] = ' '
+		case hi == lo:
+			out[i] = sparkBlocks[len(sparkBlocks)/2-1]
+		default:
+			out[i] = sparkBlocks[int(math.Round((v-lo)/(hi-lo)*float64(len(sparkBlocks)-1)))]
+		}
+	}
+	return string(out)
+}
+
 func formatRanked(view rateView, resp *pb.GetRatesResponse, categories []string) string {
 	var b strings.Builder
 	base := resp.GetBase()
@@ -61,7 +97,8 @@ func formatRanked(view rateView, resp *pb.GetRatesResponse, categories []string)
 
 		value, low, high, prev := r.GetVwap(), r.GetLow(), r.GetHigh(), r.GetPrevVwap()
 		left, right := base, r.GetCurrency()
-		if value < 1 {
+		flip := value < 1
+		if flip {
 			if prev > 0 {
 				prev = 1 / prev
 			}
@@ -78,6 +115,9 @@ func formatRanked(view rateView, resp *pb.GetRatesResponse, categories []string)
 
 		fmt.Fprintf(&b, "%s 1 %s = <b>%s</b> %s %s%s%s\n",
 			emoji.Tag(left.GetTradeId()), left.GetName(), formatValue(value), emoji.Tag(right.GetTradeId()), right.GetName(), formatChange(value, prev), via)
+		if spark := sparkline(r.GetTrend(), flip); spark != "" {
+			fmt.Fprintf(&b, "<code>%s</code> <i>24h</i>\n", spark)
+		}
 		if r.GetVia() == nil {
 			fmt.Fprintf(&b, "<i>range %s–%s · %d %s traded</i>\n\n", formatValue(low), formatValue(high), r.GetBaseVolume(), base.GetName())
 		} else {

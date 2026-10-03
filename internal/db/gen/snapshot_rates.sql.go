@@ -10,8 +10,9 @@ import (
 	"database/sql"
 )
 
-const listSnapshotRatesForHour = `-- name: ListSnapshotRatesForHour :many
+const listSnapshotRatesInRange = `-- name: ListSnapshotRatesInRange :many
 SELECT
+    ms.hour_utc,
     a.item_path AS item_a_path, a.name AS item_a_name, a.trade_id AS item_a_trade_id, a.category AS item_a_category,
     b.item_path AS item_b_path, b.name AS item_b_name, b.trade_id AS item_b_trade_id, b.category AS item_b_category,
     ms.volume_a, ms.volume_b,
@@ -20,16 +21,20 @@ SELECT
 FROM market_snapshots ms
 JOIN currencies a ON a.currency_id = ms.item_a_id
 JOIN currencies b ON b.currency_id = ms.item_b_id
-WHERE ms.hour_utc = ? AND ms.league = ?
+WHERE ms.league = ?
+  AND ms.hour_utc > ? AND ms.hour_utc <= ?
   AND (a.trade_id IN ('divine', 'chaos', 'exalted') OR b.trade_id IN ('divine', 'chaos', 'exalted'))
+ORDER BY ms.hour_utc
 `
 
-type ListSnapshotRatesForHourParams struct {
-	HourUtc int64  `json:"hour_utc"`
-	League  string `json:"league"`
+type ListSnapshotRatesInRangeParams struct {
+	League      string `json:"league"`
+	AfterHour   int64  `json:"after_hour"`
+	ThroughHour int64  `json:"through_hour"`
 }
 
-type ListSnapshotRatesForHourRow struct {
+type ListSnapshotRatesInRangeRow struct {
+	HourUtc       int64          `json:"hour_utc"`
 	ItemAPath     string         `json:"item_a_path"`
 	ItemAName     string         `json:"item_a_name"`
 	ItemATradeID  string         `json:"item_a_trade_id"`
@@ -46,16 +51,17 @@ type ListSnapshotRatesForHourRow struct {
 	HighestRatioB int64          `json:"highest_ratio_b"`
 }
 
-func (q *Queries) ListSnapshotRatesForHour(ctx context.Context, arg ListSnapshotRatesForHourParams) ([]ListSnapshotRatesForHourRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSnapshotRatesForHour, arg.HourUtc, arg.League)
+func (q *Queries) ListSnapshotRatesInRange(ctx context.Context, arg ListSnapshotRatesInRangeParams) ([]ListSnapshotRatesInRangeRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSnapshotRatesInRange, arg.League, arg.AfterHour, arg.ThroughHour)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListSnapshotRatesForHourRow
+	var items []ListSnapshotRatesInRangeRow
 	for rows.Next() {
-		var i ListSnapshotRatesForHourRow
+		var i ListSnapshotRatesInRangeRow
 		if err := rows.Scan(
+			&i.HourUtc,
 			&i.ItemAPath,
 			&i.ItemAName,
 			&i.ItemATradeID,

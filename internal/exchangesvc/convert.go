@@ -25,10 +25,10 @@ func ratePairFromDB(r dbgen.ListDefaultRatePairsRow) ratePair {
 	}
 }
 
-func toSnapshotRows(rows []dbgen.ListSnapshotRatesForHourRow) []exchange.SnapshotRow {
-	out := make([]exchange.SnapshotRow, 0, len(rows))
+func toSnapshotRowsByHour(rows []dbgen.ListSnapshotRatesInRangeRow) map[int64][]exchange.SnapshotRow {
+	out := map[int64][]exchange.SnapshotRow{}
 	for _, r := range rows {
-		out = append(out, exchange.SnapshotRow{
+		out[r.HourUtc] = append(out[r.HourUtc], exchange.SnapshotRow{
 			ItemA:         exchange.Currency{ID: r.ItemAPath, Name: r.ItemAName, TradeID: r.ItemATradeID, Category: categoryFromDB(r.ItemACategory)},
 			ItemB:         exchange.Currency{ID: r.ItemBPath, Name: r.ItemBName, TradeID: r.ItemBTradeID, Category: categoryFromDB(r.ItemBCategory)},
 			VolumeA:       uint64(r.VolumeA),
@@ -65,7 +65,7 @@ func toDefaultRatePairs(pairs []ratePair) []*pb.DefaultRatePair {
 	return out
 }
 
-func toRankedRates(ranked []exchange.CurrencyRate, prev map[string]exchange.CurrencyRate) []*pb.RankedRate {
+func toRankedRates(ranked []exchange.CurrencyRate, prev map[string]exchange.CurrencyRate, trend map[string][]float64) []*pb.RankedRate {
 	out := make([]*pb.RankedRate, 0, len(ranked))
 	for _, cr := range ranked {
 		rr := &pb.RankedRate{
@@ -76,6 +76,7 @@ func toRankedRates(ranked []exchange.CurrencyRate, prev map[string]exchange.Curr
 			BaseVolume:  cr.Rate.BaseVol,
 			QuoteVolume: cr.Rate.QuoteVol,
 			PrevVwap:    prev[cr.Currency.ID].Rate.VWAP,
+			Trend:       trend[cr.Currency.ID],
 		}
 		if cr.Via != nil {
 			rr.Via = toCurrencyRef(*cr.Via)

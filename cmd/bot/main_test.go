@@ -20,9 +20,9 @@ const priceRatesJSON = `{
   "base": {"itemPath": "Metadata/Items/Currency/CurrencyModValues", "name": "Divine Orb", "tradeId": "divine"},
   "rates": [
     {"currency": {"itemPath": "Metadata/Items/Currency/CurrencyDuplicate", "name": "Mirror of Kalandra", "tradeId": "mirror"},
-     "vwap": 0.00025, "low": 0.0002, "high": 0.0004, "baseVolume": "119704", "quoteVolume": "29", "via": null, "prevVwap": 0.0002},
+     "vwap": 0.00025, "low": 0.0002, "high": 0.0004, "baseVolume": "119704", "quoteVolume": "29", "via": null, "prevVwap": 0.0002, "trend": [0.0002, 0, 0.00025]},
     {"currency": {"itemPath": "Metadata/Items/Currency/CurrencyAnnulment", "name": "Orb of Annulment", "tradeId": "annul"},
-     "vwap": 75, "low": 70, "high": 80, "baseVolume": "100", "quoteVolume": "50", "prevVwap": 60,
+     "vwap": 75, "low": 70, "high": 80, "baseVolume": "100", "quoteVolume": "50", "prevVwap": 60, "trend": [0, 60, 75],
      "via": {"itemPath": "Metadata/Items/Currency/CurrencyRerollRare", "name": "Chaos Orb", "tradeId": "chaos"}}
   ],
   "hourUtc": "1790359200",
@@ -60,7 +60,8 @@ func TestBuildRates_FormatsGatewayResponse(t *testing.T) {
 	for _, want := range []string{
 		"💰 <b>Most expensive — Forbidden Rites</b>",
 		"1 Mirror of Kalandra = <b>4000</b>",
-		"Divine Orb 🔴 -20.0%",
+		"Divine Orb 🔴 -20.0%\n<code>██▁</code> <i>24h</i>\n",
+		"<code> ▁█</code> <i>24h</i>",
 		"range 2500–5000 · 119704 Divine Orb traded",
 		"1 Divine Orb = <b>75.0</b>",
 		"Orb of Annulment 🟢 +25.0% <i>(via Chaos Orb)</i>",
@@ -86,6 +87,26 @@ func TestFormatChange(t *testing.T) {
 	} {
 		if got := formatChange(tc.cur, tc.prev); got != tc.want {
 			t.Errorf("formatChange(%v, %v) = %q, want %q", tc.cur, tc.prev, got, tc.want)
+		}
+	}
+}
+
+func TestSparkline(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		trend []float64
+		flip  bool
+		want  string
+	}{
+		{"rising", []float64{1, 2, 3, 4, 5, 6, 7, 8}, false, "▁▂▃▄▅▆▇█"},
+		{"flat", []float64{5, 5, 5}, false, "▄▄▄"},
+		{"gaps repeat the previous hour", []float64{0, 2, 0, 4}, false, " ▁▁█"},
+		{"flipped", []float64{0.5, 0.25}, true, "▁█"},
+		{"one point", []float64{0, 0, 3}, false, ""},
+		{"empty", nil, false, ""},
+	} {
+		if got := sparkline(tc.trend, tc.flip); got != tc.want {
+			t.Errorf("%s: sparkline(%v, %v) = %q, want %q", tc.name, tc.trend, tc.flip, got, tc.want)
 		}
 	}
 }

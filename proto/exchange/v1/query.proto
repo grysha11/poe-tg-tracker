@@ -60,6 +60,7 @@ message RankedRate {
   uint64 quote_volume = 6;
   CurrencyRef via = 7;
   double prev_vwap = 8;
+  repeated double trend = 9;
 }
 
 message GetRatesResponse {

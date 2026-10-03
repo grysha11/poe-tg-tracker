@@ -172,14 +172,7 @@ func TestGetRates_PreviousHour(t *testing.T) {
 	seed(t, dbase)
 	client := newClient(t, dbase)
 
-	id := func(tradeID string) int64 {
-		var id int64
-		if err := dbase.QueryRow(`SELECT currency_id FROM currencies WHERE trade_id = ?`, tradeID).Scan(&id); err != nil {
-			t.Fatalf("currency %s: %v", tradeID, err)
-		}
-		return id
-	}
-	divine, chaos, mirror := id("divine"), id("chaos"), id("mirror")
+	divine, chaos, mirror := currencyID(t, dbase, "divine"), currencyID(t, dbase, "chaos"), currencyID(t, dbase, "mirror")
 
 	stale := testHour - 3*3600
 	insertSnapshot(t, dbase, testLeague, stale, divine, mirror, 50, 8)
@@ -202,6 +195,86 @@ func TestGetRates_PreviousHour(t *testing.T) {
 	for tradeID, w := range want {
 		if prev[tradeID] != w {
 			t.Errorf("%s prev vwap = %v, want %v", tradeID, prev[tradeID], w)
+		}
+	}
+}
+
+func currencyID(t *testing.T, dbase *db.DB, tradeID string) int64 {
+	t.Helper()
+	var id int64
+	if err := dbase.QueryRow(`SELECT currency_id FROM currencies WHERE trade_id = ?`, tradeID).Scan(&id); err != nil {
+		t.Fatalf("currency %s: %v", tradeID, err)
+	}
+	return id
+}
+
+func trendsByTradeID(resp *pb.GetRatesResponse) map[string][]float64 {
+	out := map[string][]float64{}
+	for _, r := range resp.GetRates() {
+		out[r.GetCurrency().GetTradeId()] = r.GetTrend()
+	}
+	return out
+}
+
+func TestGetRates_Trend(t *testing.T) {
+	dbase := newTestDB(t)
+	seed(t, dbase)
+	client := newClient(t, dbase)
+	divine, chaos, mirror := currencyID(t, dbase, "divine"), currencyID(t, dbase, "chaos"), currencyID(t, dbase, "mirror")
+
+	insertSnapshot(t, dbase, testLeague, testHour-3600, divine, chaos, 10, 1400)
+	insertSnapshot(t, dbase, testLeague, testHour-2*3600, divine, mirror, 50, 5)
+	insertSnapshot(t, dbase, testLeague, testHour-23*3600, divine, chaos, 10, 1000)
+	insertSnapshot(t, dbase, testLeague, testHour-24*3600, divine, chaos, 10, 9990)
+
+	resp, err := client.GetRates(context.Background(), &pb.GetRatesRequest{View: pb.RateView_RATE_VIEW_PRICE})
+	if err != nil {
+		t.Fatalf("GetRates: %v", err)
+	}
+
+	want := map[string][]float64{"chaos": make([]float64, 24), "exalted": make([]float64, 24), "mirror": make([]float64, 24)}
+	want["chaos"][0], want["chaos"][22], want["chaos"][23] = 100, 140, 150
+	want["exalted"][23] = 20
+	want["mirror"][21], want["mirror"][23] = 0.1, 0.2
+
+	got := trendsByTradeID(resp)
+	for tradeID, w := range want {
+		if !slices.Equal(got[tradeID], w) {
+			t.Errorf("%s trend = %v, want %v", tradeID, got[tradeID], w)
+		}
+	}
+	if resp.GetPrevHourUtc() != testHour-3600 {
+		t.Errorf("prev hour = %d, want %d", resp.GetPrevHourUtc(), testHour-3600)
+	}
+}
+
+func TestGetRates_PreviousHourOutsideTrendWindow(t *testing.T) {
+	dbase := newTestDB(t)
+	seed(t, dbase)
+	client := newClient(t, dbase)
+
+	old := testHour - 30*3600
+	insertSnapshot(t, dbase, testLeague, old, currencyID(t, dbase, "divine"), currencyID(t, dbase, "chaos"), 10, 900)
+
+	resp, err := client.GetRates(context.Background(), &pb.GetRatesRequest{View: pb.RateView_RATE_VIEW_PRICE})
+	if err != nil {
+		t.Fatalf("GetRates: %v", err)
+	}
+	if resp.GetPrevHourUtc() != old {
+		t.Errorf("prev hour = %d, want %d", resp.GetPrevHourUtc(), old)
+	}
+
+	wantTrend := make([]float64, 24)
+	wantTrend[23] = 150
+	for _, r := range resp.GetRates() {
+		if r.GetCurrency().GetTradeId() != "chaos" {
+			continue
+		}
+		if r.GetPrevVwap() != 90 {
+			t.Errorf("chaos prev vwap = %v, want 90", r.GetPrevVwap())
+		}
+		if !slices.Equal(r.GetTrend(), wantTrend) {
+			t.Errorf("chaos trend = %v, want %v", r.GetTrend(), wantTrend)
 		}
 	}
 }

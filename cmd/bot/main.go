@@ -48,6 +48,7 @@ func main() {
 	}
 	defer tel.ShutdownWithTimeout()
 	log := tel.Log
+	primeMetrics(ctx)
 
 	app := &App{
 		bot: telegram.NewBot(cfg.TelegramToken),

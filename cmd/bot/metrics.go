@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
+
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -35,4 +38,18 @@ func init() {
 	if err != nil {
 		otel.Handle(err)
 	}
+}
+
+func primeMetrics(ctx context.Context) {
+	for _, cmd := range []string{"start", "help", "rates", "leagues"} {
+		for _, outcome := range []string{outcomeOK, outcomeError} {
+			commandsTotal.Add(ctx, 0, metric.WithAttributes(attribute.String("command", cmd), attribute.String("outcome", outcome)))
+		}
+	}
+	commandsTotal.Add(ctx, 0, metric.WithAttributes(attribute.String("command", outcomeUnknown), attribute.String("outcome", outcomeUnknown)))
+
+	for _, kind := range []string{"message", "callback"} {
+		rejectedTotal.Add(ctx, 0, metric.WithAttributes(attribute.String("kind", kind)))
+	}
+	getUpdatesErrors.Add(ctx, 0)
 }
